@@ -9,11 +9,7 @@ import glob
 import os
 import tqdm
 
-import magphase.magphase as mp
-import pyworld as pw
 import multiprocessing
-
-from utils import butter_bandpass_filter
 
 def get_spectrograms(sound_file):
     # Loading sound file
@@ -23,40 +19,35 @@ def get_spectrograms(sound_file):
     y, _ = librosa.effects.trim(y)
 
     # Preemphasis
-    y_pre = np.append(y[0], y[1:] - hp.preemphasis * y[:-1])
+    y = np.append(y[0], y[1:] - hp.preemphasis * y[:-1])
+
+    # Scale between -1 and 1
+    y = y / np.abs(y).max()
 
     # stft
-    linear = librosa.stft(y=y_pre,
-                          n_fft=hp.n_fft,
-                          hop_length=hp.hop_length,
-                          win_length=hp.win_length)
+    stft = librosa.stft(y=y, n_fft=hp.n_fft, hop_length=hp.hop_length, win_length=hp.win_length)
 
     # magnitude spectrogram
-    mag = np.abs(linear)  # (1+n_fft//2, T)
+    mag, _ = librosa.magphase(stft)
 
     # mel spectrogram
-    #mel_basis = librosa.filters.mel(hp.sr, hp.n_fft, hp.n_mels,fmin=hp.lowcut, fmax=hp.highcut)  # (n_mels, 1+n_fft//2)
-    mel_basis = librosa.filters.mel(hp.sr, hp.n_fft, hp.n_mels)  # (n_mels, 1+n_fft//2)
-    mel = np.dot(mel_basis, mag)  # (n_mels, t)
+    mel = librosa.feature.melspectrogram(S=mag,n_mels=hp.n_mels,fmin=hp.lowcut, fmax=hp.highcut)
 
     # Sequence length
     done = np.ones_like(mel[0, :]).astype(np.int32)
 
     # to decibel
     mel = librosa.amplitude_to_db(mel)
-    mag = librosa.amplitude_to_db(mag)
+    mag = librosa.power_to_db(mag)
 
-    # normalize
+    # Normalize
     mel = np.clip((mel - hp.ref_db + hp.max_db) / hp.max_db, 0, 1)
     mag = np.clip((mag - hp.ref_db + hp.max_db) / hp.max_db, 0, 1)
-    # mel = (mel - hp.ref_db + hp.max_db) / hp.max_db
-    # mag = (mag - hp.ref_db + hp.max_db) / hp.max_db
-    
+
     # Transpose
     mel = mel.T.astype(np.float32)  # (T, n_mels)
     mag = mag.T.astype(np.float32)  # (T, 1+n_fft//2)
 
-    #return mel, mag
     return mel, done, mag
 
 def prep_all_files(files):

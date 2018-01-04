@@ -22,20 +22,17 @@ class Hyperparams:
     hop_length = int(sr*frame_shift) # samples  This is dependent on the frame_shift.
     win_length = int(sr*frame_length) # samples This is dependent on the frame_length.
     n_mels = 80 # Number of Mel banks to generate
-    world_d = 513
-    world_period = 5.0
-    sharpening_factor = 1.4 # Exponent for amplifying the predicted magnitude
     n_iter = 200 # Number of inversion iterations
     preemphasis = 0.97 # or None 0.97
     max_db = 100
-    ref_db = 20
+    ref_db = 25
     lowcut = 125.0
     highcut = 7600.0
-    dropout_rate = .2 # .05
+    dropout_rate = .5 # .05
     norm_type = "ins" # TODO: weight normalization
 
     # Model
-    r = 4 # Reduction factor 4
+    r = 1 # Reduction factor 4
     run_cmu = True
     sinusoid = False
     normalization  = True
@@ -46,7 +43,8 @@ class Hyperparams:
         vocab_size = 32
     else:
         vocab_size = 53
-    embed_size = 256 # == e
+    embed_size = 512 # == e
+    
     enc_layers = 7
     enc_filter_size = 5
     enc_channels = 64 # == c 256
@@ -54,6 +52,7 @@ class Hyperparams:
     dec_layers = 4
     dec_filter_size = 5
     attention_size = 256 # == a 128
+    
     ## Converter
     converter_layers = 10
     converter_filter_size = 5
@@ -62,9 +61,8 @@ class Hyperparams:
 	
     # data
     max_duration = 10.0#10.10 # seconds
-    T_x = 180 #200 # characters. maximum length of text.
+    T_x = 200 #200 # characters. maximum length of text.
     T_y = int(get_T_y(max_duration, sr, hop_length, r)) # Maximum length of sound (frames)
-    T_y2 = 3* T_y
 
     # training scheme
     optim = 'adam'
@@ -79,13 +77,13 @@ class Hyperparams:
     num_iterations = 500000
 
     # Prepo params
-    data = 'datasets/wavetestFR2'
+    data = 'datasets/default'
     prepro_gpu = 16
     # Training and Testing
 
     summary_interval = 1
-    test_interval = 5
-    checkpoint_interval = 5
+    test_interval = 1
+    checkpoint_interval = 1
 
     # change the prepro emphasis and clipping
     # Use other vocoder of WaveNet

@@ -185,7 +185,6 @@ def load_data(config,training=True):
 
     # Parse
     texts, _texts_test, mels, mags, dones = [], [], [], [], []
-    #texts, _texts_test, mels, mags = [], [], [], []
     num_samples = 1
     metadata = os.path.join(config.data_paths, 'metadata.csv')
     for line in codecs.open(metadata, 'r', 'utf-8'):
@@ -209,14 +208,12 @@ def load_data(config,training=True):
             dones.append(os.path.join(config.data_paths, "dones", fname + ".npy"))
 
     return texts, _texts_test, mels, mags, dones
-    #return texts, _texts_test, mels, mags
 
 def get_batch(config):
     """Loads training data and put them in queues"""
     with tf.device('/cpu:0'):
         # Load data
         _texts, _texts_tests, _mels, _mags, _dones = load_data(config)
-        #_texts, _texts_tests, _mels, _mags = load_data(config)
 
         # Calc total batch count
         num_batch = len(_texts) // hp.batch_size
@@ -229,9 +226,7 @@ def get_batch(config):
         dones = tf.convert_to_tensor(_dones)
         
         # Create Queues
-        #text, texts_test, mel, pitch, harmonic, aperiodic = tf.train.slice_input_producer([texts,texts_tests, mels, pitches,harmonics,aperiodics], shuffle=False,capacity=hp.batch_size*32)
         text, texts_test, mel, mag, done = tf.train.slice_input_producer([texts,texts_tests, mels, mags, dones], shuffle=True)
-        #text, texts_test, mel, mag = tf.train.slice_input_producer([texts,texts_tests, mels, mags], shuffle=True)
 
         # Decoding
         text = tf.decode_raw(text, tf.int32) # (None,)
@@ -252,13 +247,10 @@ def get_batch(config):
         done = done[::hp.r] # (Ty/r,)
 
         texts, texts_tests, mels, mags, dones = tf.train.batch([text, texts_test, mel, mag, done],
-        #texts, texts_tests, mels, mags = tf.train.batch([text, texts_test, mel, mag],
                         shapes=[(hp.T_x,), (hp.T_x,), (hp.T_y//hp.r, hp.n_mels*hp.r), (hp.T_y, 1+hp.n_fft//2), (hp.T_y//hp.r,)],
-                        #shapes=[(hp.T_x,), (hp.T_x,), (hp.T_y//hp.r, hp.n_mels*hp.r), (hp.T_y, 1+hp.n_fft//2)],
                         num_threads=8,
                         batch_size=hp.batch_size, 
                         capacity=hp.batch_size*8,   
                         dynamic_pad=False)
 
         return texts_tests, texts, mels, dones, mags, num_batch
-        #return texts_tests, texts, mels, mags, num_batch
