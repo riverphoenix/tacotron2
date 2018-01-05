@@ -26,49 +26,26 @@ class Graph:
         self.char2idx, self.idx2char = load_vocab()
         self.graph = tf.Graph()
         with self.graph.as_default():
-            # Data Feeding
-            ## x: Text. (N, T_x), int32
-            ## y1: Reduced melspectrogram. (N, T_y//r, n_mels*r) float32
-            ## y2: Reduced dones. (N, T_y//r,) int32
-            ## z: Magnitude. (N, T_y, n_fft//2+1) float32
             if training:
                 self.origx, self.x, self.y1, self.y2, self.y3, self.num_batch = get_batch(config)
-                #self.origx, self.x, self.y1, self.y3, self.num_batch = get_batch(config)
-                self.prev_max_attentions_li = tf.ones(shape=(hp.dec_layers, hp.batch_size), dtype=tf.int32)
 
             else: # Evaluation
                 self.x = tf.placeholder(tf.int32, shape=(1, hp.T_x))
                 self.y1 = tf.placeholder(tf.float32, shape=(1, hp.T_y//hp.r, hp.n_mels*hp.r))
-                self.prev_max_attentions_li = tf.placeholder(tf.int32, shape=(hp.dec_layers, 1,))
 
-			# Get decoder inputs: feed last frames only (N, Ty//r, n_mels)
+			# Get decoder inputs: feed last frames only
             self.decoder_input = tf.concat((tf.zeros_like(self.y1[:, :1, -hp.n_mels:]), self.y1[:, :-1, -hp.n_mels:]), 1)
 
             # Networks
             with tf.variable_scope("encoder"):
-                self.keys, self.vals = encoder(self.x, training=training) # (N, Tx, e)
+                self.encoded = encoder(self.x, training=training)
                 
             with tf.variable_scope("decoder"):
-                #self.mel_logits, self.decoder_output, self.alignments_li, self.max_attentions_li \
-                self.mel_logits, self.done_output, self.decoder_output, self.alignments_li, self.max_attentions_li \
-                    = decoder(self.decoder_input,
-                             self.keys,
-                             self.vals,
-                             self.prev_max_attentions_li,
-                             training=training)
+                self.mel_logits, self.done_output = decoder(self.decoder_input, self.encoded, training=training)
                 self.mel_output = tf.nn.sigmoid(self.mel_logits)
                 
             with tf.variable_scope("converter"):
-                # Restore shape
-                self.converter_input = tf.reshape(self.decoder_output, (-1, hp.T_y, hp.embed_size//hp.r))
-                self.converter_input = fc_block(self.converter_input,
-                                                hp.converter_channels,
-                                                activation_fn=tf.nn.relu,
-                                                training=training) # (N, Ty, v)
-
-                # Converter
-                #self.mag_logits = converter(self.converter_input, training=training)
-                # self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
+                self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
                 self.mag_logits = converter(self.converter_input, training=training)
                 self.mag_output = tf.nn.sigmoid(self.mag_logits)
             
@@ -80,7 +57,6 @@ class Graph:
                 self.loss2 = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.done_output, labels=self.y2))
                 self.loss3= tf.reduce_mean(tf.abs(self.mag_output - self.y3))
                 self.loss = self.loss1 + self.loss2 + self.loss3
-                #self.loss = self.loss1 + self.loss3
 
                 # Training Scheme
                 self.optimizer = tf.train.AdamOptimizer(learning_rate=hp.lr)

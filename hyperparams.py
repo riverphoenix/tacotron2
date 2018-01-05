@@ -28,7 +28,8 @@ class Hyperparams:
     ref_db = 25
     lowcut = 125.0
     highcut = 7600.0
-    dropout_rate = .5 # .05
+    dropout_rate = .5
+    z_drop = .1
     norm_type = "ins" # TODO: weight normalization
 
     # Model
@@ -45,19 +46,18 @@ class Hyperparams:
         vocab_size = 53
     embed_size = 512 # == e
     
-    enc_layers = 7
-    enc_filter_size = 5
-    enc_channels = 64 # == c 256
+    enc_layers = 3
+    enc_kernel = 5
+    enc_filters = 512
+    enc_units = 256
+
     ## Decoder
-    dec_layers = 4
-    dec_filter_size = 5
-    attention_size = 256 # == a 128
+    attention_size = 128 # == a 128
     
     ## Converter
     converter_layers = 10
     converter_filter_size = 5
-    converter_channels = 256 # 256
-    attention_win_size = 3
+    converter_channels = 256
 	
     # data
     max_duration = 10.0#10.10 # seconds
@@ -82,10 +82,13 @@ class Hyperparams:
     # Training and Testing
 
     summary_interval = 1
-    test_interval = 1
+    test_interval = 10000
     checkpoint_interval = 1
 
     # change the prepro emphasis and clipping
     # Use other vocoder of WaveNet
 
     # Implement tacotron2 using the layers
+
+    # Decoder try with new conv1D instead
+    # Decoder try also with bi-directional LSTM
