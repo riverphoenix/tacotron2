@@ -35,14 +35,15 @@ class Graph:
 
 			# Get decoder inputs: feed last frames only
             self.decoder_input = tf.concat((tf.zeros_like(self.y1[:, :1, -hp.n_mels:]), self.y1[:, :-1, -hp.n_mels:]), 1)
-
+            
             # Networks
             with tf.variable_scope("encoder"):
                 self.encoded = encoder(self.x, training=training)
                 
             with tf.variable_scope("decoder"):
                 self.mel_logits, self.done_output = decoder(self.decoder_input, self.encoded, training=training)
-                self.mel_output = tf.nn.sigmoid(self.mel_logits)
+                self.mel_output = self.mel_logits
+                #self.mel_output = tf.nn.sigmoid(self.mel_logits)
                 
             with tf.variable_scope("converter"):
                 self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))

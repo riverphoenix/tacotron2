@@ -52,7 +52,13 @@ class Hyperparams:
     enc_units = 256
 
     ## Decoder
-    attention_size = 128 # == a 128
+    attention_size = 128
+    dec_prenet_size = 256
+    dec_LSTM_size = 1024
+    dec_postnet_layers = 5
+    dec_postnet_size = 5
+    dec_postnet_filters = 512
+
     
     ## Converter
     converter_layers = 10
