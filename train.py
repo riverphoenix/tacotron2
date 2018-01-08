@@ -28,10 +28,12 @@ class Graph:
         with self.graph.as_default():
             if training:
                 self.origx, self.x, self.y1, self.y2, self.y3, self.num_batch = get_batch(config)
+                self.prev_max_attentions_li = tf.ones(shape=(hp.dec_layers, hp.batch_size), dtype=tf.int32)
 
             else: # Evaluation
                 self.x = tf.placeholder(tf.int32, shape=(1, hp.T_x))
                 self.y1 = tf.placeholder(tf.float32, shape=(1, hp.T_y//hp.r, hp.n_mels*hp.r))
+                self.prev_max_attentions_li = tf.placeholder(tf.int32, shape=(hp.dec_layers, 1,))
 
 			# Get decoder inputs: feed last frames only
             self.decoder_input = tf.concat((tf.zeros_like(self.y1[:, :1, -hp.n_mels:]), self.y1[:, :-1, -hp.n_mels:]), 1)
@@ -41,7 +43,7 @@ class Graph:
                 self.encoded = encoder(self.x, training=training)
                 
             with tf.variable_scope("decoder"):
-                self.mel_logits, self.done_output = decoder(self.decoder_input, self.encoded, training=training)
+                self.mel_logits, self.done_output = decoder(self.decoder_input, self.encoded, self.prev_max_attentions_li, training=training)
                 self.mel_output = self.mel_logits
                 #self.mel_output = tf.nn.sigmoid(self.mel_logits)
                 
@@ -152,11 +154,11 @@ def main():
                 if sv.should_stop(): break
                 losses = [0,0,0,0]
                 #losses = [0,0,0]
-                for step in tqdm(range(g.num_batch)):
-                #for step in range(g.num_batch):
+                #for step in tqdm(range(g.num_batch)):
+                for step in range(g.num_batch):
                     #gs,merged,loss,loss1,loss3,alginm,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss3, g.alignments_li,g.train_op])
-                    gs,merged,loss,loss1,loss2,loss3,alginm,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss2,g.loss3, g.alignments_li,g.train_op])
-                    #infolog.log("Step %04d: Loss = %.8f Loss1 = %.8f Loss2 = %.8f Loss3 = %.8f" %(gs,loss,loss1,loss2,loss3))
+                    gs,merged,loss,loss1,loss2,loss3,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss2,g.loss3, g.train_op])
+                    infolog.log("Step %04d: Loss = %.8f Loss1 = %.8f Loss2 = %.8f Loss3 = %.8f" %(gs,loss,loss1,loss2,loss3))
                     #infolog.log("Step %04d: Loss = %.8f Loss1 = %.8f Loss3 = %.8f" %(gs,loss,loss1,loss3))
                     #loss_one = [loss,loss1,loss3]
                     loss_one = [loss,loss1,loss2,loss3]
