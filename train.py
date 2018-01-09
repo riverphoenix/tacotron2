@@ -43,12 +43,13 @@ class Graph:
                 self.encoded = encoder(self.x, training=training)
                 
             with tf.variable_scope("decoder"):
-                self.mel_logits, self.done_output = decoder(self.decoder_input, self.encoded, self.prev_max_attentions_li, training=training)
-                self.mel_output = self.mel_logits
-                #self.mel_output = tf.nn.sigmoid(self.mel_logits)
+                self.mel_logits, self.done_output, self.max_attentions_li = decoder(self.decoder_input, self.encoded, self.prev_max_attentions_li, training=training)
+                #self.mel_output = self.mel_logits
+                self.mel_output = tf.nn.sigmoid(self.mel_logits)
                 
             with tf.variable_scope("converter"):
-                self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
+                #self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
+                self.converter_input = self.mel_output
                 self.mag_logits = converter(self.converter_input, training=training)
                 self.mag_output = tf.nn.sigmoid(self.mag_logits)
             
@@ -154,11 +155,11 @@ def main():
                 if sv.should_stop(): break
                 losses = [0,0,0,0]
                 #losses = [0,0,0]
-                #for step in tqdm(range(g.num_batch)):
-                for step in range(g.num_batch):
+                for step in tqdm(range(g.num_batch)):
+                #for step in range(g.num_batch):
                     #gs,merged,loss,loss1,loss3,alginm,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss3, g.alignments_li,g.train_op])
                     gs,merged,loss,loss1,loss2,loss3,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss2,g.loss3, g.train_op])
-                    infolog.log("Step %04d: Loss = %.8f Loss1 = %.8f Loss2 = %.8f Loss3 = %.8f" %(gs,loss,loss1,loss2,loss3))
+                    #infolog.log("Step %04d: Loss = %.8f Loss1 = %.8f Loss2 = %.8f Loss3 = %.8f" %(gs,loss,loss1,loss2,loss3))
                     #infolog.log("Step %04d: Loss = %.8f Loss1 = %.8f Loss3 = %.8f" %(gs,loss,loss1,loss3))
                     #loss_one = [loss,loss1,loss3]
                     loss_one = [loss,loss1,loss2,loss3]

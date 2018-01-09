@@ -55,27 +55,28 @@ def invert_spectrogram(spectrogram):
 
 
 def plot_losses(config,Kmel_out,Ky1,Kdone_out,Ky2,Kmag_out,Ky3,gs):
+   
     plt.figure(figsize=(10, 10))
 
-    plt.subplot(3, 2, 1)
+    ax1 = plt.subplot(3, 2, 1)
     librosa.display.specshow(Kmel_out[0,:,:].T,y_axis='linear')
     plt.title('Predicted mel')
     plt.colorbar()
     plt.tight_layout()
 
-    plt.subplot(3, 2, 2)
+    ax2 = plt.subplot(3, 2, 2,sharey=ax1)
     librosa.display.specshow(Ky1[0,:,:].T,y_axis='linear')
     plt.title('Original mel')
     plt.colorbar()
     plt.tight_layout()
 
-    plt.subplot(3, 2, 3)
+    ax3 = plt.subplot(3, 2, 3)
     librosa.display.specshow(Kmag_out[0,:,:].T,y_axis='linear')
     plt.title('Predicted mag')
     plt.colorbar()
     plt.tight_layout()
 
-    plt.subplot(3, 2, 4)
+    ax4 = plt.subplot(3, 2, 4,sharey=ax3)
     librosa.display.specshow(Ky3[0,:,:].T,y_axis='linear')
     plt.title('Original mag')
     plt.colorbar()
@@ -92,13 +93,13 @@ def plot_losses(config,Kmel_out,Ky1,Kdone_out,Ky2,Kmag_out,Ky3,gs):
     ind = np.arange(len(Kd))
     width = 1.0
 
-    ax = plt.subplot(3, 2, 5)
-    ax.bar(ind, Kd, width, color='r')
+    ax5 = plt.subplot(3, 2, 5)
+    ax5.bar(ind, Kd, width, color='r')
     plt.title('Predicted Dones')
     plt.tight_layout()
   
-    ax = plt.subplot(3, 2, 6)
-    ax.bar(ind, Ky2[0,:], width, color='r')
+    ax6 = plt.subplot(3, 2, 6)
+    ax6.bar(ind, Ky2[0,:], width, color='r')
     plt.title('Original Dones')
     plt.tight_layout()
 

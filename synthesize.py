@@ -16,27 +16,26 @@ from scipy.io.wavfile import write
 import random
 import pyworld as pw
 import librosa
+from tqdm import tqdm
 
 def create_write_files(ret,sess,g,x,mname,cdir,typeS):
 
     x = np.expand_dims(x, axis=0)
     mel_output = np.zeros((1, hp.T_y // hp.r, hp.n_mels * hp.r), np.float32)
     decoder_output = np.zeros((1, hp.T_y // hp.r, hp.embed_size), np.float32)
-    alignments_li = np.zeros((hp.dec_layers, hp.T_x, hp.T_y//hp.r), np.float32)
     prev_max_attentions_li = np.zeros((hp.dec_layers, 1), np.int32)
-    for j in range(hp.T_y // hp.r):
-        _gs, _mel_output, _decoder_output, _max_attentions_li, _alignments_li = \
-            sess.run([g.global_step, g.mel_output, g.decoder_output, g.max_attentions_li, g.alignments_li],
+    #for j in range(hp.T_y // hp.r):
+    for j in tqdm(range(hp.T_y // hp.r)):
+        _gs, _mel_output, _max_attentions_li = \
+            sess.run([g.global_step, g.mel_output, g.max_attentions_li],
                      {g.x: x,
                       g.y1: mel_output,
                       g.prev_max_attentions_li:prev_max_attentions_li})
         mel_output[:, j, :] = _mel_output[:, j, :]
-        decoder_output[:, j, :] = _decoder_output[:, j, :]
-        prev_max_attentions_li = np.array(_max_attentions_li)[:, :, j]
+        #prev_max_attentions_li = np.array(_max_attentions_li)[:, :, j]
        
     #mag_output = sess.run([g.mag_output], {g.mel_output: mel_output})
-    mag_output = sess.run(g.mag_output, {g.decoder_output: decoder_output})
-
+    mag_output = sess.run(g.mag_output, {g.converter_input: mel_output})
     
     x = np.squeeze(x, axis=0)
     txt = invert_text(x)

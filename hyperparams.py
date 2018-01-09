@@ -66,9 +66,6 @@ class Hyperparams:
     dec_postnet_layers = 5
     dec_postnet_size = 5
     dec_postnet_filters = 512
-
-    
-
     
     ## Converter
     converter_layers = 10
@@ -93,12 +90,12 @@ class Hyperparams:
     num_iterations = 500000
 
     # Prepo params
-    data = 'datasets/default'
+    data = 'datasets/defaultF'
     prepro_gpu = 16
     # Training and Testing
 
     summary_interval = 1
-    test_interval = 10000
+    test_interval = 5
     checkpoint_interval = 1
 
     # change the prepro emphasis and clipping
