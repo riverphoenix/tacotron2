@@ -18,7 +18,10 @@ from fn_utils import infolog
 import synthesize
 from utils import *
 from tensorflow.python import debug as tf_debug
+from google.protobuf import text_format
 
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class Graph:
     def __init__(self, config=None,training=True):
@@ -28,7 +31,7 @@ class Graph:
         with self.graph.as_default():
             if training:
                 self.origx, self.x, self.y1, self.y2, self.y3, self.num_batch = get_batch(config)
-                self.prev_max_attentions_li = tf.ones(shape=(hp.dec_layers, hp.batch_size), dtype=tf.int32)
+                self.prev_max_attentions_li = tf.ones(shape=(hp.dec_layers, self.num_batch), dtype=tf.int32)
 
             else: # Evaluation
                 self.x = tf.placeholder(tf.int32, shape=(1, hp.T_x))
@@ -54,7 +57,7 @@ class Graph:
                     self.converter_input = self.mel_output
                     self.mag_logits = converter(self.converter_input, training=training)
                     self.mag_output = tf.nn.sigmoid(self.mag_logits)
-            elif hp.train_form == 'Decoder':
+            elif hp.train_form == 'Converter':
                 with tf.variable_scope("converter"):
                     #self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
                     self.converter_input = self.y1
@@ -66,7 +69,7 @@ class Graph:
 
             if training:
                 # Loss
-                if hp.train_form != 'Decoder':
+                if hp.train_form != 'Converter':
                     self.loss1 = tf.reduce_mean(tf.abs(self.mel_output - self.y1))
                     if hp.include_dones:
                         self.loss2 = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.done_output, labels=self.y2))
@@ -101,7 +104,7 @@ class Graph:
                 # Summary
                 tf.summary.scalar('loss', self.loss)
 
-                if hp.train_form != 'Decoder':
+                if hp.train_form != 'Converter':
                     tf.summary.histogram('mel_output', self.mel_output)
                     tf.summary.histogram('mel_actual', self.y1)
                     tf.summary.scalar('loss1', self.loss1)
@@ -125,7 +128,28 @@ def get_most_recent_checkpoint(checkpoint_dir):
     print(" [*] Found lastest checkpoint: {}".format(lastest_checkpoint))
     return lastest_checkpoint
 
+def load_converter_via_graph(model_restore):
+
+    saver = tf.train.import_meta_graph(model_restore+'.meta')
+    # Access the graph
+    graph = tf.get_default_graph()
+    #Access the appropriate output for fine-tuning
+    text_file = open("Output.txt", "w")
+    
+    for n in tf.get_default_graph().as_graph_def().node:
+        text_file.write(n.name)
+        text_file.write("\n")
+    text_file.close()
+    conv = graph.get_tensor_by_name('converter:0')
+
+    #use this if you only want to change gradients of the last layer
+    #conv = tf.stop_gradient(conv) # It's an identity function
+    #conv_shape= conv.get_shape().as_list()
+
+    return conv
+
 def main():
+    print()
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--log_dir', default=hp.logdir)
@@ -133,7 +157,8 @@ def main():
     parser.add_argument('--sample_dir', default=hp.sampledir)
     parser.add_argument('--data_paths', default=hp.data)
     parser.add_argument('--load_path', default=None)
-    parser.add_argument('--initialize_path', default=None)
+    parser.add_argument('--load_encoder', default=None)
+    parser.add_argument('--load_converter', default=None)
     parser.add_argument('--deltree', default=False)
 
     parser.add_argument('--summary_interval', type=int, default=hp.summary_interval)
@@ -144,6 +169,18 @@ def main():
     parser.add_argument('--debug',type=bool,default=False)
 
     config = parser.parse_args()
+
+    if config.load_path and (config.load_converter or config.load_encoder):
+        print("You can't restore both full path and Encoder/Converter")
+        quit()
+
+    if config.load_encoder:
+        infolog.log('Loading encoder', slack=True)
+    if config.load_converter:
+        infolog.log('Loading converter', slack=True)
+        restore_converter_path = get_most_recent_checkpoint(config.load_converter)
+        converter_layers = load_converter_via_graph(restore_converter_path)
+
     config.log_dir = config.log_dir + '/' + config.log_name
     if not os.path.exists(config.log_dir): 
         os.makedirs(config.log_dir)
@@ -154,6 +191,7 @@ def main():
     log_path = os.path.join(config.log_dir+'/', 'train.log')
     infolog.init(log_path, "log")
     checkpoint_path = os.path.join(config.log_dir, 'model.ckpt')
+
     g = Graph(config=config);
     print("Training Graph loaded")
     if hp.test_graph:
@@ -165,16 +203,12 @@ def main():
 
             #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             if config.load_path:
-                # Restore from a checkpoint if the user requested it.
-                tf.reset_default_graph()
-                restore_path = get_most_recent_checkpoint(config.load_path)
-                sv.saver.restore(sess, restore_path)
-                infolog.log('Resuming from checkpoint: %s ' % (restore_path), slack=True)
-            elif config.initialize_path:
-                restore_path = get_most_recent_checkpoint(config.initialize_path)
-                sv.saver.restore(sess, restore_path)
-                infolog.log('Initialized from checkpoint: %s ' % (restore_path), slack=True)
-            else:
+                    # Restore from a checkpoint if the user requested it.
+                    tf.reset_default_graph()
+                    restore_path = get_most_recent_checkpoint(config.load_path)
+                    sv.saver.restore(sess, restore_path)
+                    infolog.log('Resuming from checkpoint: %s ' % (restore_path), slack=True)
+            else:        
                 infolog.log('Starting new training', slack=True)
 
             summary_writer = tf.summary.FileWriter(config.log_dir, sess.graph)
@@ -247,7 +281,7 @@ def main():
                     infolog.log('Saving checkpoint to: %s-%d' % (checkpoint_path, gs))
                     sv.saver.save(sess, checkpoint_path, global_step=gs)
 
-                if hp.test_graph and hp.train_form !='Decoder':
+                if hp.test_graph and hp.train_form !='Converter':
                     if epoch % config.test_interval == 0:
                         infolog.log('Saving audio')
                         origx = sess.run([g.origx])

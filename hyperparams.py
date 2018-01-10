@@ -78,9 +78,10 @@ class Hyperparams:
     T_y = int(get_T_y(max_duration, sr, hop_length, r)) # Maximum length of sound (frames)
 
     # run options
-    test_graph = False
+    test_graph = True
     include_dones = False
-    train_form = 'Decoder' # 'Econder', 'Decoder', 'Both'
+    train_form = 'Both' # 'Encoder', 'Converter', 'Both'
+    print_shapes = False
 
     # training scheme
     optim = 'adam'
@@ -96,11 +97,11 @@ class Hyperparams:
 
     # Prepo params
     data = 'datasets/default'
-    prepro_gpu = 4
+    prepro_gpu = 16
     # Training and Testing
 
     summary_interval = 1
-    test_interval = 100
+    test_interval = 5
     checkpoint_interval = 1
 
     # change to be able to load external decoder but also load the previously saved model (either both or encoder only)

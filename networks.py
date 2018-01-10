@@ -9,11 +9,11 @@ from modules import *
 import tensorflow as tf
 
 def encoder(inputs, training=True, scope="encoder", reuse=None):
-    print(inputs)
+    if hp.print_shapes: print(inputs)
     with tf.variable_scope(scope, reuse=reuse):
         with tf.variable_scope("text_embedding"):
             tensor = embed(inputs, hp.vocab_size, hp.embed_size)  # (N, Tx, e)
-        print(tensor)
+        if hp.print_shapes: print(tensor)
         with tf.variable_scope("encoder_conv"):
             for i in range(hp.enc_layers):
                 tensor = conv1d(tensor,
@@ -23,7 +23,7 @@ def encoder(inputs, training=True, scope="encoder", reuse=None):
                                 training=training,
                                 dropout_rate=hp.dropout_rate,
                                 scope="encoder_conv_{}".format(i)) # (N, Tx, c)
-        print(tensor)
+        if hp.print_shapes: print(tensor)
         with tf.variable_scope("encoder_biLSTM"):
           cell = tf.nn.rnn_cell.LSTMCell(num_units=hp.enc_units)
           cell = tf.contrib.rnn.DropoutWrapper(cell, state_keep_prob=1.0-hp.z_drop)
@@ -31,16 +31,11 @@ def encoder(inputs, training=True, scope="encoder", reuse=None):
             cell_fw=cell,cell_bw=cell,dtype=tf.float32,inputs=tensor)
           output, _ = outputs
           #output = tf.concat(outputs, 2)
-        print(output)
+        if hp.print_shapes: print(output)
 
     return output
 
 def decoder(decoder_input, encoder_output, prev_max_attentions_li=None, scope="decoder", training=True, reuse=None):
-
-    if training:
-        bc_batch = hp.batch_size
-    else:
-        bc_batch = 1
 
     with tf.variable_scope(scope, reuse=reuse):
       
@@ -52,7 +47,7 @@ def decoder(decoder_input, encoder_output, prev_max_attentions_li=None, scope="d
         prenet = fullyconnected(decoder_input, is_training=training, layer_size=hp.dec_prenet_size, activation=tf.nn.relu,scope='fc1')
         prenet = fullyconnected(prenet, is_training=training, layer_size=hp.dec_prenet_size, activation=tf.nn.relu,scope='fc2')
 
-      print(prenet)
+      if hp.print_shapes: print(prenet)
 
       with tf.variable_scope("decoder_conv_att"):
           # with tf.variable_scope("positional_encoding"):
@@ -141,24 +136,24 @@ def decoder(decoder_input, encoder_output, prev_max_attentions_li=None, scope="d
 
           #   attn_cell = (tensor + decoder_input) * tf.sqrt(0.5)
       #attn_cell = inputs
-      print(attn_cell)
+      if hp.print_shapes: print(attn_cell)
 
       pre_att = tf.concat([prenet,attn_cell], axis=-1)
-      print(pre_att)
+      if hp.print_shapes: print(pre_att)
 
       with tf.variable_scope("decoderLSTM"):
         cell = [tf.nn.rnn_cell.LSTMCell(size) for size in [hp.dec_LSTM_size,hp.dec_LSTM_size*2]]
         cell = tf.nn.rnn_cell.MultiRNNCell(cell)
         outputsLSTM, _ = tf.nn.dynamic_rnn(cell=cell,dtype=tf.float32, inputs=pre_att)
 
-      print(outputsLSTM)
+      if hp.print_shapes: print(outputsLSTM)
 
       LSTM_att = tf.concat([outputsLSTM,attn_cell], axis=-1)
-      print(LSTM_att)
+      if hp.print_shapes: print(LSTM_att)
 
       with tf.variable_scope("projection"):
         projection = tf.layers.dense(LSTM_att,hp.n_mels)
-        print(projection)
+        if hp.print_shapes: print(projection)
 
       with tf.variable_scope("postnet"):
         tensor = projection
@@ -171,16 +166,16 @@ def decoder(decoder_input, encoder_output, prev_max_attentions_li=None, scope="d
             dropout_rate=hp.dropout_rate,
             scope="decoder_conv_{}".format(i)) # (N, Tx, c)
         tensor = tf.layers.dense(tensor,hp.n_mels)
-      print(tensor)
+      if hp.print_shapes: print(tensor)
 
       mel_logits = projection + tensor
-      print(mel_logits)
+      if hp.print_shapes: print(mel_logits)
 
       if hp.include_dones:
         with tf.variable_scope("done_output"):
             done_output = fc_block(LSTM_att, 2, training=training)
             done_output = tf.nn.sigmoid(done_output)
-        print(done_output)
+        if hp.print_shapes: print(done_output)
       else:
         done_output = None
 
@@ -188,11 +183,6 @@ def decoder(decoder_input, encoder_output, prev_max_attentions_li=None, scope="d
     return mel_logits, done_output, prev_max_attentions_li
 
 def converter(inputs, training=True, scope="converter", reuse=None):
-    
-    if training:
-        bc_batch = hp.batch_size
-    else:
-        bc_batch = 1
 
     with tf.variable_scope(scope, reuse=reuse):
 
@@ -207,6 +197,7 @@ def converter(inputs, training=True, scope="converter", reuse=None):
         output_fw, _ = outputs
         inputs = (inputs + output_fw) * tf.sqrt(0.5)
         output_rnn = inputs
+        if hp.print_shapes: print(output_rnn)
 
       with tf.variable_scope("converter_conv"):
           for i in range(hp.converter_layers):
@@ -218,10 +209,13 @@ def converter(inputs, training=True, scope="converter", reuse=None):
                                    scope="converter_conv_{}".format(i))
               inputs = (inputs + outputs) * tf.sqrt(0.5)
           output_conv = inputs
+          if hp.print_shapes: print(output_conv)
     
     inputs = (output_rnn + output_conv) * tf.sqrt(0.5)
+    if hp.print_shapes: print(inputs)
 
     with tf.variable_scope("mag_logits"):
         mag_logits = fc_block(inputs, hp.n_fft//2 + 1, training=training)
+        if hp.print_shapes: print(mag_logits)
 
     return mag_logits
