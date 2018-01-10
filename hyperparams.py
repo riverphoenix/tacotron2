@@ -77,6 +77,11 @@ class Hyperparams:
     T_x = 200 #200 # characters. maximum length of text.
     T_y = int(get_T_y(max_duration, sr, hop_length, r)) # Maximum length of sound (frames)
 
+    # run options
+    test_graph = False
+    include_dones = False
+    train_form = 'Decoder' # 'Econder', 'Decoder', 'Both'
+
     # training scheme
     optim = 'adam'
     lr = 0.001
@@ -90,18 +95,12 @@ class Hyperparams:
     num_iterations = 500000
 
     # Prepo params
-    data = 'datasets/defaultF'
-    prepro_gpu = 16
+    data = 'datasets/default'
+    prepro_gpu = 4
     # Training and Testing
 
     summary_interval = 1
-    test_interval = 5
+    test_interval = 100
     checkpoint_interval = 1
 
-    # change the prepro emphasis and clipping
-    # Use other vocoder of WaveNet
-
-    # Implement tacotron2 using the layers
-
-    # Decoder try with new conv1D instead
-    # Decoder try also with bi-directional LSTM
+    # change to be able to load external decoder but also load the previously saved model (either both or encoder only)

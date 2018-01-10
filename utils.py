@@ -57,51 +57,71 @@ def invert_spectrogram(spectrogram):
 def plot_losses(config,Kmel_out,Ky1,Kdone_out,Ky2,Kmag_out,Ky3,gs):
    
     plt.figure(figsize=(10, 10))
-
-    ax1 = plt.subplot(3, 2, 1)
-    librosa.display.specshow(Kmel_out[0,:,:].T,y_axis='linear')
-    plt.title('Predicted mel')
-    plt.colorbar()
-    plt.tight_layout()
-
-    ax2 = plt.subplot(3, 2, 2,sharey=ax1)
-    librosa.display.specshow(Ky1[0,:,:].T,y_axis='linear')
-    plt.title('Original mel')
-    plt.colorbar()
-    plt.tight_layout()
-
-    ax3 = plt.subplot(3, 2, 3)
-    librosa.display.specshow(Kmag_out[0,:,:].T,y_axis='linear')
-    plt.title('Predicted mag')
-    plt.colorbar()
-    plt.tight_layout()
-
-    ax4 = plt.subplot(3, 2, 4,sharey=ax3)
-    librosa.display.specshow(Ky3[0,:,:].T,y_axis='linear')
-    plt.title('Original mag')
-    plt.colorbar()
-    plt.tight_layout()
-
-    KDone = Kdone_out[0,:,:]
-    Kd = []
-    for i in range(KDone.shape[0]):
-        if KDone[i,0] > KDone[i,1]:
-            Kd.append(0)
+    if hp.train_form == 'Both':
+        if Kdone_out is not None:
+            sizeP = 3
         else:
-            Kd.append(1)
+            sizeP = 2
+    elif hp.train_form == 'Encoder':
+        if Kdone_out is not None:
+            sizeP = 2
+        else:
+            sizeP = 1
+    else:
+        sizeP = 1
+     
+    fig_cnt = 1
+    if Kmel_out is not None:
+        ax1 = plt.subplot(sizeP, 2, fig_cnt)
+        librosa.display.specshow(Kmel_out[0,:,:].T,y_axis='linear')
+        plt.title('Predicted mel')
+        plt.colorbar()
+        plt.tight_layout()
 
-    ind = np.arange(len(Kd))
-    width = 1.0
+        ax2 = plt.subplot(sizeP, 2, fig_cnt+1,sharey=ax1)
+        librosa.display.specshow(Ky1[0,:,:].T,y_axis='linear')
+        plt.title('Original mel')
+        plt.colorbar()
+        plt.tight_layout()
+        
+        fig_cnt  = fig_cnt + 2
 
-    ax5 = plt.subplot(3, 2, 5)
-    ax5.bar(ind, Kd, width, color='r')
-    plt.title('Predicted Dones')
-    plt.tight_layout()
-  
-    ax6 = plt.subplot(3, 2, 6)
-    ax6.bar(ind, Ky2[0,:], width, color='r')
-    plt.title('Original Dones')
-    plt.tight_layout()
+    if Kmag_out is not None:
+        ax3 = plt.subplot(sizeP, 2, fig_cnt)
+        librosa.display.specshow(Kmag_out[0,:,:].T,y_axis='linear')
+        plt.title('Predicted mag')
+        plt.colorbar()
+        plt.tight_layout()
+
+        ax4 = plt.subplot(sizeP, 2, fig_cnt+1,sharey=ax3)
+        librosa.display.specshow(Ky3[0,:,:].T,y_axis='linear')
+        plt.title('Original mag')
+        plt.colorbar()
+        plt.tight_layout()
+        
+        fig_cnt  = fig_cnt + 2
+
+    if Kdone_out is not None:
+        KDone = Kdone_out[0,:,:]
+        Kd = []
+        for i in range(KDone.shape[0]):
+            if KDone[i,0] > KDone[i,1]:
+                Kd.append(0)
+            else:
+                Kd.append(1)
+
+        ind = np.arange(len(Kd))
+        width = 1.0
+
+        ax5 = plt.subplot(sizeP, 2, fig_cnt)
+        ax5.bar(ind, Kd, width, color='r')
+        plt.title('Predicted Dones')
+        plt.tight_layout()
+      
+        ax6 = plt.subplot(sizeP, 2, fig_cnt+1)
+        ax6.bar(ind, Ky2[0,:], width, color='r')
+        plt.title('Original Dones')
+        plt.tight_layout()
 
     plt.savefig('{}/losses_{}.png'.format(config.log_dir, gs), format='png')
 

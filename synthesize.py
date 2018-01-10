@@ -14,7 +14,6 @@ from utils import *
 from data_load import load_test_data, invert_text
 from scipy.io.wavfile import write
 import random
-import pyworld as pw
 import librosa
 from tqdm import tqdm
 

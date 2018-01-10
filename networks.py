@@ -176,10 +176,13 @@ def decoder(decoder_input, encoder_output, prev_max_attentions_li=None, scope="d
       mel_logits = projection + tensor
       print(mel_logits)
 
-      with tf.variable_scope("done_output"):
+      if hp.include_dones:
+        with tf.variable_scope("done_output"):
             done_output = fc_block(LSTM_att, 2, training=training)
             done_output = tf.nn.sigmoid(done_output)
-      print(done_output)
+        print(done_output)
+      else:
+        done_output = None
 
     #return mel_logits, done_output, max_attentions_li
     return mel_logits, done_output, prev_max_attentions_li
