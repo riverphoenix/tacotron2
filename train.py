@@ -157,7 +157,6 @@ def main():
     parser.add_argument('--sample_dir', default=hp.sampledir)
     parser.add_argument('--data_paths', default=hp.data)
     parser.add_argument('--load_path', default=None)
-    parser.add_argument('--load_encoder', default=None)
     parser.add_argument('--load_converter', default=None)
     parser.add_argument('--deltree', default=False)
 
@@ -169,17 +168,6 @@ def main():
     parser.add_argument('--debug',type=bool,default=False)
 
     config = parser.parse_args()
-
-    if config.load_path and (config.load_converter or config.load_encoder):
-        print("You can't restore both full path and Encoder/Converter")
-        quit()
-
-    if config.load_encoder:
-        infolog.log('Loading encoder', slack=True)
-    if config.load_converter:
-        infolog.log('Loading converter', slack=True)
-        restore_converter_path = get_most_recent_checkpoint(config.load_converter)
-        converter_layers = load_converter_via_graph(restore_converter_path)
 
     config.log_dir = config.log_dir + '/' + config.log_name
     if not os.path.exists(config.log_dir): 
@@ -195,8 +183,11 @@ def main():
     g = Graph(config=config);
     print("Training Graph loaded")
     if hp.test_graph:
-        g2 = Graph(config=config,training=False);
+        g2 = Graph(config=config,training=False)
         print("Testing Graph loaded")
+        if config.load_converter:
+            g_conv = Graph(config=config,training=False)
+            print("Converter Graph loaded")
     with g.graph.as_default():
         sv = tf.train.Supervisor(logdir=config.log_dir)
         with sv.managed_session() as sess:
@@ -204,7 +195,6 @@ def main():
             #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             if config.load_path:
                     # Restore from a checkpoint if the user requested it.
-                    tf.reset_default_graph()
                     restore_path = get_most_recent_checkpoint(config.load_path)
                     sv.saver.restore(sess, restore_path)
                     infolog.log('Resuming from checkpoint: %s ' % (restore_path), slack=True)
@@ -285,7 +275,11 @@ def main():
                     if epoch % config.test_interval == 0:
                         infolog.log('Saving audio')
                         origx = sess.run([g.origx])
-                        wavs = synthesize.synthesize_part(g2,config,gs,origx)
+                        print(origx)
+                        if not config.load_converter:
+                            wavs = synthesize.synthesize_part(g2,config,gs,origx,None)
+                        else:
+                            wavs = synthesize.synthesize_part(g2,config,gs,origx,g_conv)
                         plot_wavs(config,wavs,gs)
 
                 # break

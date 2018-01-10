@@ -80,7 +80,7 @@ class Hyperparams:
     # run options
     test_graph = True
     include_dones = False
-    train_form = 'Both' # 'Encoder', 'Converter', 'Both'
+    train_form = 'Encoder' # 'Encoder', 'Converter', 'Both'
     print_shapes = False
 
     # training scheme
@@ -101,7 +101,7 @@ class Hyperparams:
     # Training and Testing
 
     summary_interval = 1
-    test_interval = 5
+    test_interval = 1
     checkpoint_interval = 1
 
     # change to be able to load external decoder but also load the previously saved model (either both or encoder only)
