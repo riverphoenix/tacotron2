@@ -78,9 +78,9 @@ class Hyperparams:
     T_y = int(get_T_y(max_duration, sr, hop_length, r)) # Maximum length of sound (frames)
 
     # run options
-    test_graph = True
+    test_graph = False
     include_dones = False
-    train_form = 'Encoder' # 'Encoder', 'Converter', 'Both'
+    train_form = 'Converter' # 'Encoder', 'Converter', 'Both'
     print_shapes = False
 
     # training scheme
@@ -96,7 +96,7 @@ class Hyperparams:
     num_iterations = 500000
 
     # Prepo params
-    data = 'datasets/default'
+    data = 'datasets/defaultS'
     prepro_gpu = 16
     # Training and Testing
 

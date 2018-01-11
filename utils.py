@@ -7,6 +7,8 @@ import numpy as np
 import librosa
 import copy
 import matplotlib
+matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 from scipy import signal
 from matplotlib.pyplot import step, show

@@ -68,10 +68,8 @@ def create_mel(sess,g,x):
 
 def create_write_files_conv(ret,sess,mel_in,g,x,mname,cdir,typeS):
 
-    x = np.expand_dims(x, axis=0)
     mag_output = sess.run(g.mag_output, {g.converter_input: mel_in})
     
-    x = np.squeeze(x, axis=0)
     txt = invert_text(x)
     mag_output = np.squeeze(mag_output[0])
 
@@ -87,18 +85,22 @@ def create_write_files_conv(ret,sess,mel_in,g,x,mname,cdir,typeS):
 
 def synthesize_part(grp,config,gs,x_train,g_conv):
 
-    x_train = random.sample(x_train, hp.batch_size)
+    if len(x_train) > hp.batch_size:
+        x_train = random.sample(x_train, hp.batch_size)
+    else:
+        x_train = x_train[0]
     x_test = load_test_data()
     rand = random.randint(0,hp.batch_size-1)
     x_train = x_train[rand]
     x_test = x_test[rand]
-    
+
     wavs = []
     if g_conv is None:
         with grp.graph.as_default():
             sv = tf.train.Supervisor(logdir=config.log_dir)
             with sv.managed_session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
                 # Restore parameters
+                print("Restoring checkpoint : "+tf.train.latest_checkpoint(config.log_dir))
                 sv.saver.restore(sess, tf.train.latest_checkpoint(config.log_dir))
 
                 wavs = create_write_files(wavs,sess,grp,x_train,"sample_"+str(gs)+"_train_",config.log_dir,"train")
@@ -110,6 +112,7 @@ def synthesize_part(grp,config,gs,x_train,g_conv):
             sv = tf.train.Supervisor(logdir=config.log_dir)
             with sv.managed_session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
                 # Restore parameters
+                print("Restoring checkpoint : "+tf.train.latest_checkpoint(config.log_dir))
                 sv.saver.restore(sess, tf.train.latest_checkpoint(config.log_dir))
 
                 mel_out1 = create_mel(sess,grp,x_train)
@@ -117,14 +120,15 @@ def synthesize_part(grp,config,gs,x_train,g_conv):
 
                 sess.close()
         with g_conv.graph.as_default():
-            sv = tf.train.Supervisor(logdir=config.log_dir)
-            with sv.managed_session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
+            sv_conv = tf.train.Supervisor(logdir=config.load_converter)
+            with sv_conv.managed_session(config=tf.ConfigProto(allow_soft_placement=True)) as sess_conv:
                 # Restore parameters
-                sv.saver.restore(sess, tf.train.latest_checkpoint(config.load_converter))
+                print("Restoring checkpoint : "+tf.train.latest_checkpoint(config.load_converter))
+                sv_conv.saver.restore(sess_conv, tf.train.latest_checkpoint(config.load_converter))
 
-                wavs = create_write_files_conv(wavs,sess,mel_out1,g_conv,x_train,"sample_"+str(gs)+"_train_",config.log_dir,"train")
-                wavs = create_write_files_conv(wavs,sess,mel_out2,g_conv,x_test,"sample_"+str(gs)+"_test_",config.log_dir,"test")
+                wavs = create_write_files_conv(wavs,sess_conv,mel_out1,g_conv,x_train,"sample_"+str(gs)+"_train_",config.log_dir,"train")
+                wavs = create_write_files_conv(wavs,sess_conv,mel_out2,g_conv,x_test,"sample_"+str(gs)+"_test_",config.log_dir,"test")
 
-                sess.close()
+                sess_conv.close()
 
     return wavs

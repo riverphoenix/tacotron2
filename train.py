@@ -24,13 +24,13 @@ from google.protobuf import text_format
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 class Graph:
-    def __init__(self, config=None,training=True):
+    def __init__(self, config=None, training=True, train_form='Both'):
         # Load vocabulary
         self.char2idx, self.idx2char = load_vocab()
         self.graph = tf.Graph()
         with self.graph.as_default():
             if training:
-                self.origx, self.x, self.y1, self.y2, self.y3, self.num_batch = get_batch(config)
+                self.origx, self.x, self.y1, self.y2, self.y3, self.num_batch = get_batch(config,train_form)
                 self.prev_max_attentions_li = tf.ones(shape=(hp.dec_layers, self.num_batch), dtype=tf.int32)
 
             else: # Evaluation
@@ -39,10 +39,11 @@ class Graph:
                 self.prev_max_attentions_li = tf.placeholder(tf.int32, shape=(hp.dec_layers, 1,))
 
 			# Get decoder inputs: feed last frames only
-            self.decoder_input = tf.concat((tf.zeros_like(self.y1[:, :1, -hp.n_mels:]), self.y1[:, :-1, -hp.n_mels:]), 1)
+            if train_form != 'Converter':
+                self.decoder_input = tf.concat((tf.zeros_like(self.y1[:, :1, -hp.n_mels:]), self.y1[:, :-1, -hp.n_mels:]), 1)
             
             # Networks
-            if hp.train_form != 'Decoder':
+            if train_form != 'Converter':
                 with tf.variable_scope("encoder"):
                     self.encoded = encoder(self.x, training=training)
                     
@@ -51,13 +52,13 @@ class Graph:
                     #self.mel_output = self.mel_logits
                     self.mel_output = tf.nn.sigmoid(self.mel_logits)
                 
-            if hp.train_form == 'Both':
+            if train_form == 'Both':
                 with tf.variable_scope("converter"):
                     #self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
                     self.converter_input = self.mel_output
                     self.mag_logits = converter(self.converter_input, training=training)
                     self.mag_output = tf.nn.sigmoid(self.mag_logits)
-            elif hp.train_form == 'Converter':
+            elif train_form == 'Converter':
                 with tf.variable_scope("converter"):
                     #self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
                     self.converter_input = self.y1
@@ -69,19 +70,19 @@ class Graph:
 
             if training:
                 # Loss
-                if hp.train_form != 'Converter':
+                if train_form != 'Converter':
                     self.loss1 = tf.reduce_mean(tf.abs(self.mel_output - self.y1))
                     if hp.include_dones:
                         self.loss2 = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.done_output, labels=self.y2))
-                if hp.train_form != 'Encoder':
+                if train_form != 'Encoder':
                     self.loss3= tf.reduce_mean(tf.abs(self.mag_output - self.y3))
 
-                if hp.train_form == 'Both':
+                if train_form == 'Both':
                     if hp.include_dones:
                         self.loss = self.loss1 + self.loss2 + self.loss3
                     else:
                         self.loss = self.loss1 + self.loss3
-                elif hp.train_form == 'Encoder':
+                elif train_form == 'Encoder':
                     if hp.include_dones:
                         self.loss = self.loss1 + self.loss2
                     else:
@@ -104,7 +105,7 @@ class Graph:
                 # Summary
                 tf.summary.scalar('loss', self.loss)
 
-                if hp.train_form != 'Converter':
+                if train_form != 'Converter':
                     tf.summary.histogram('mel_output', self.mel_output)
                     tf.summary.histogram('mel_actual', self.y1)
                     tf.summary.scalar('loss1', self.loss1)
@@ -112,7 +113,7 @@ class Graph:
                         tf.summary.histogram('done_output', self.done_output)
                         tf.summary.histogram('done_actual', self.y2)
                         tf.summary.scalar('loss2', self.loss2)
-                if hp.train_form != 'Encoder':
+                if train_form != 'Encoder':
                     tf.summary.histogram('mag_output', self.mag_output)
                     tf.summary.histogram('mag_actual', self.y3)
                     tf.summary.scalar('loss3', self.loss3)
@@ -127,26 +128,6 @@ def get_most_recent_checkpoint(checkpoint_dir):
     lastest_checkpoint = os.path.join(checkpoint_dir, "model.ckpt-{}".format(max_idx))
     print(" [*] Found lastest checkpoint: {}".format(lastest_checkpoint))
     return lastest_checkpoint
-
-def load_converter_via_graph(model_restore):
-
-    saver = tf.train.import_meta_graph(model_restore+'.meta')
-    # Access the graph
-    graph = tf.get_default_graph()
-    #Access the appropriate output for fine-tuning
-    text_file = open("Output.txt", "w")
-    
-    for n in tf.get_default_graph().as_graph_def().node:
-        text_file.write(n.name)
-        text_file.write("\n")
-    text_file.close()
-    conv = graph.get_tensor_by_name('converter:0')
-
-    #use this if you only want to change gradients of the last layer
-    #conv = tf.stop_gradient(conv) # It's an identity function
-    #conv_shape= conv.get_shape().as_list()
-
-    return conv
 
 def main():
     print()
@@ -180,13 +161,13 @@ def main():
     infolog.init(log_path, "log")
     checkpoint_path = os.path.join(config.log_dir, 'model.ckpt')
 
-    g = Graph(config=config);
+    g = Graph(config=config, training=True, train_form=hp.train_form)
     print("Training Graph loaded")
     if hp.test_graph:
-        g2 = Graph(config=config,training=False)
+        g2 = Graph(config=config, training=False, train_form=hp.train_form)
         print("Testing Graph loaded")
         if config.load_converter:
-            g_conv = Graph(config=config,training=False)
+            g_conv = Graph(config=config, training=False, train_form='Converter')
             print("Converter Graph loaded")
     with g.graph.as_default():
         sv = tf.train.Supervisor(logdir=config.log_dir)
@@ -275,7 +256,6 @@ def main():
                     if epoch % config.test_interval == 0:
                         infolog.log('Saving audio')
                         origx = sess.run([g.origx])
-                        print(origx)
                         if not config.load_converter:
                             wavs = synthesize.synthesize_part(g2,config,gs,origx,None)
                         else:
