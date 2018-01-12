@@ -80,7 +80,7 @@ class Hyperparams:
     # run options
     test_graph = False
     include_dones = False
-    train_form = 'Converter' # 'Encoder', 'Converter', 'Both'
+    train_form = 'Encoder' # 'Encoder', 'Converter', 'Both'
     print_shapes = False
 
     # training scheme
@@ -104,4 +104,4 @@ class Hyperparams:
     test_interval = 1
     checkpoint_interval = 1
 
-    # change to be able to load external decoder but also load the previously saved model (either both or encoder only)
+    # Create generate without training (simply loading both encoder and converter)

@@ -120,15 +120,6 @@ class Graph:
               
                 self.merged = tf.summary.merge_all()
 
-def get_most_recent_checkpoint(checkpoint_dir):
-    checkpoint_paths = [path for path in glob("{}/*.ckpt-*.data-*".format(checkpoint_dir))]
-    idxes = [int(os.path.basename(path).split('-')[1].split('.')[0]) for path in checkpoint_paths]
-
-    max_idx = max(idxes)
-    lastest_checkpoint = os.path.join(checkpoint_dir, "model.ckpt-{}".format(max_idx))
-    print(" [*] Found lastest checkpoint: {}".format(lastest_checkpoint))
-    return lastest_checkpoint
-
 def main():
     print()
     parser = argparse.ArgumentParser()
@@ -176,9 +167,8 @@ def main():
             #sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             if config.load_path:
                     # Restore from a checkpoint if the user requested it.
-                    restore_path = get_most_recent_checkpoint(config.load_path)
-                    sv.saver.restore(sess, restore_path)
-                    infolog.log('Resuming from checkpoint: %s ' % (restore_path), slack=True)
+                    infolog.log('Resuming from checkpoint: %s ' % (tf.train.latest_checkpoint(config.log_dir)), slack=True)
+                    sv.saver.restore(sess, tf.train.latest_checkpoint(config.log_dir))
             else:        
                 infolog.log('Starting new training', slack=True)
 
