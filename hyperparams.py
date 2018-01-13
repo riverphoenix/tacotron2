@@ -81,6 +81,7 @@ class Hyperparams:
     test_graph = False
     include_dones = False
     train_form = 'Encoder' # 'Encoder', 'Converter', 'Both'
+    test_only = 1
     print_shapes = False
 
     # training scheme
@@ -104,4 +105,4 @@ class Hyperparams:
     test_interval = 1
     checkpoint_interval = 1
 
-    # Create generate without training (simply loading both encoder and converter)
+    # Make generate be more general and run N samples (up to hp.batch) instead of only 1
