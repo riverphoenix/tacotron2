@@ -274,7 +274,7 @@ def main():
                 wavs = synthesize.synthesize_part(g2,config,0,origx,None)
             else:
                 wavs = synthesize.synthesize_part(g2,config,0,origx,g_conv)
-            plot_wavs(config,wavs,gs)
+            plot_wavs(config,wavs,0)
 
     print("Done")
 

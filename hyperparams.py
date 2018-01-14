@@ -102,7 +102,7 @@ class Hyperparams:
     # Training and Testing
 
     summary_interval = 1
-    test_interval = 1
+    test_interval = 3
     checkpoint_interval = 1
 
     # Make generate be more general and run N samples (up to hp.batch) instead of only 1

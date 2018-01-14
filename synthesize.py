@@ -44,7 +44,7 @@ def create_write_files(ret,sess,g,x,mname,cdir,typeS):
         wav = spectrogram2wav(mag_output)
         wav, _ = librosa.effects.trim(wav)
         write(cdir + "/{}mag.wav".format(mname), hp.sr, wav)
-        ret.append([txt,wav,typeS+"_world"])
+        ret.append([txt,wav,typeS+"_world",mel_output,mag_output])
     except Exception:
         sys.exc_clear()
 
@@ -53,6 +53,7 @@ def create_write_files(ret,sess,g,x,mname,cdir,typeS):
 def create_mel(sess,g,x):
 
     x = np.expand_dims(x, axis=0)
+    print(x)
     mel_output = np.zeros((1, hp.T_y // hp.r, hp.n_mels * hp.r), np.float32)
     decoder_output = np.zeros((1, hp.T_y // hp.r, hp.embed_size), np.float32)
     prev_max_attentions_li = np.zeros((hp.dec_layers, 1), np.int32)
@@ -77,7 +78,7 @@ def create_write_files_conv(ret,sess,mel_in,g,x,mname,cdir,typeS):
         wav = spectrogram2wav(mag_output)
         wav, _ = librosa.effects.trim(wav)
         write(cdir + "/{}mag.wav".format(mname), hp.sr, wav)
-        ret.append([txt,wav,typeS+"_world"])
+        ret.append([txt,wav,typeS+"_world",mel_in,mag_output])
     except Exception:
         sys.exc_clear()
 
@@ -116,7 +117,7 @@ def synthesize_part(grp,config,gs,x_train,g_conv):
                 sv.saver.restore(sess, tf.train.latest_checkpoint(config.log_dir))
 
                 mel_out1 = create_mel(sess,grp,x_train)
-                mel_out2 = create_mel(sess,grp,x_test)
+                #mel_out2 = create_mel(sess,grp,x_test)
 
                 sess.close()
         with g_conv.graph.as_default():
@@ -127,7 +128,7 @@ def synthesize_part(grp,config,gs,x_train,g_conv):
                 sv_conv.saver.restore(sess_conv, tf.train.latest_checkpoint(config.load_converter))
 
                 wavs = create_write_files_conv(wavs,sess_conv,mel_out1,g_conv,x_train,"sample_"+str(gs)+"_train_",config.log_dir,"train")
-                wavs = create_write_files_conv(wavs,sess_conv,mel_out2,g_conv,x_test,"sample_"+str(gs)+"_test_",config.log_dir,"test")
+                #wavs = create_write_files_conv(wavs,sess_conv,mel_out2,g_conv,x_test,"sample_"+str(gs)+"_test_",config.log_dir,"test")
 
                 sess_conv.close()
 
