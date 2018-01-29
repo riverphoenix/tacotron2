@@ -4,8 +4,7 @@
 
 ## Initial attempt
 
-This is a tensorflow implementation of [NATURAL TTS SYNTHESIS BY CONDITIONING WAVENET ON MEL SPECTROGRAM
-PREDICTIONS](https://arxiv.org/pdf/1712.05884.pdf).
+This is a tensorflow implementation of [NATURAL TTS SYNTHESIS BY CONDITIONING WAVENET ON MEL SPECTROGRAM PREDICTIONS](https://arxiv.org/pdf/1712.05884.pdf).
 
 Initially I will use existing components from tacotron and other opensource implementations
 
@@ -25,14 +24,26 @@ First run 'python prepro.py' to generate the training data
 - cmudict.dict.txt if you use hyperparam cmu=True
 
 Then run 'python train.py' for the actual training/generation/loading of model/samples. Typical usages:
-- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --deltree=True ```, logs defines log output directory, log_name defines name of current run, data_paths the directory of the training data, deltree to delete folder
-- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --load_path=logs/test ```, load_path the folder to load previous trained model
-- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --load_path=logs/test --load_converter=logs/converter ```, load_converter the folder to load pretrained converter
+- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/default --deltree=True ```, logs defines log output directory, log_name defines name of current run, data_paths the directory of the training data, deltree to delete folder
+- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/default --load_path=logs/test ```, load_path the folder to load previous trained model
+- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/default --load_path=logs/test --load_converter=logs/converter ```, load_converter the folder to load pretrained converter
 
 Hyperparameters for training and testing:
 - summary_interval = 1 # every X epochs generate summary
 - test_interval = 3 # every X epochs generate audio sample
 - checkpoint_interval = 1 # every X epochs save model (required for test_interval to be before every audio sample epooch)
+
+For better training decouple the phase into 3 steps:
+1. ``` python train.py --log_dir=logs --log_name=Encoder --data_paths=datasets/default --deltree=True ```, train the encoder alone. For this set [train_form='Encoder']
+2. ``` python train.py --log_dir=logs --log_name=Converter --data_paths=datasets/default --deltree=True ```, train the converter alone. For this set [train_form='Converter']
+3. ``` python train.py --log_dir=logs --log_name=Encoder --data_paths=datasets/default --load_path=logs/Encoder --load_converter=logs/Converter ```, Generate samples using trained econder and converter. For this set [train_form='Encoder' and 'test_only = 1']
+
+### Results
+To be posted in a few days (work in progress)
+
+### ToDo
+1. Replace the current Griffin-Lim converter with trained Wavenet vocoder (Ryuichi Yamamoto - https://github.com/r9y9/wavenet_vocoder)
+2. Use better dataset (less noisy)
 
 ### Data
 

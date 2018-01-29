@@ -58,7 +58,7 @@ class Hyperparams:
     att_parameter_init = 0.5
     dec_att_filters = 32
     dec_att_kernel = 31
-    parallel_iterations = 32
+    parallel_iterations = 1
 
     dec_layers = 4
     dec_filter_size = 5
@@ -83,9 +83,9 @@ class Hyperparams:
     T_y = int(get_T_y(max_duration, sr, hop_length, r)) # Maximum length of sound (frames)
 
     # run options
-    test_graph = True
-    include_dones = True
-    train_form = 'Both' # 'Encoder', 'Converter', 'Both'
+    test_graph = False
+    include_dones = False
+    train_form = 'Converter' # 'Encoder', 'Converter', 'Both'
     test_only = 0
     print_shapes = True
 

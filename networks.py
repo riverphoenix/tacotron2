@@ -9,6 +9,9 @@ from modules import *
 import tensorflow as tf
 from rnn_wrappers import TacotronDecoderWrapper
 from attention_wrapper import AttentionWrapper, LocationBasedAttention, BahdanauAttention
+from helpers import TacoTrainingHelper, TacoTestHelper
+from dynamic_decoder import dynamic_decode
+from custom_decoder import CustomDecoder
 
 
 def encoder(inputs, training=True, scope="encoder", reuse=None):
@@ -49,26 +52,30 @@ def decoder(mel_targets, encoder_output, scope="decoder", training=True, reuse=N
       decoder_state = attention_decoder.zero_state(batch_size=hp.batch_size, dtype=tf.float32)
       projection = tf.tile([[0.0]], [hp.batch_size, hp.n_mels])
       final_projection =tf.zeros([hp.batch_size, hp.T_y//hp.r, hp.n_mels], tf.float32)
-      LSTM_att =tf.zeros([hp.batch_size, hp.T_y//hp.r, hp.dec_LSTM_size*2], tf.float32)   
+      if hp.include_dones:
+        LSTM_att =tf.zeros([hp.batch_size, hp.T_y//hp.r, hp.dec_LSTM_size*2], tf.float32)
+      else:
+        LSTM_att = 0
       step = 0
 
-      def att_condition(step, projection, final_projection, decoder_state, mel_targets,LTSM_att):
+      def att_condition(step, projection, final_projection, decoder_state, mel_targets,LSTM_att):
         return step <  hp.T_y//hp.r
 
-      def att_body(step, projection, final_projection, decoder_state, mel_targets,LTSM_att):
+      def att_body(step, projection, final_projection, decoder_state, mel_targets,LSTM_att):
         if training:
           if step == 0:
-            projection, decoder_state, _, LTSM_next = attention_decoder.call(tf.tile([[0.0]], [hp.batch_size, hp.n_mels]), decoder_state)
+            projection, decoder_state, _, LSTM_next = attention_decoder.call(tf.tile([[0.0]], [hp.batch_size, hp.n_mels]), decoder_state)
           else:
-            projection, decoder_state, _, LTSM_next = attention_decoder.call(mel_targets[:, step-1, :], decoder_state)
+            projection, decoder_state, _, LSTM_next = attention_decoder.call(mel_targets[:, step-1, :], decoder_state)
         else:
-          projection, decoder_state, _, LTSM_next = attention_decoder.call(projection, decoder_state)
-        final_projection = tf.concat([final_projection,tf.expand_dims(projection,1)],axis=1)[:,1:,:]
-        final_projection.set_shape([hp.batch_size, hp.T_y//hp.r, hp.n_mels])
-        LTSM_att = tf.concat([LTSM_att,tf.expand_dims(LTSM_next,1)],axis=1)[:,1:,:]
-        LTSM_att.set_shape([hp.batch_size, hp.T_y//hp.r, hp.dec_LSTM_size*2])
-        return ((step+1), projection, final_projection, decoder_state, mel_targets,LTSM_att)
-
+          projection, decoder_state, _, LSTM_next = attention_decoder.call(projection, decoder_state)
+        fprojection = tf.expand_dims(projection,axis=1)
+        final_projection = tf.concat([final_projection,fprojection],axis=1)[:,1:,:]
+        if hp.include_dones:
+          fLSTM_next = tf.expand_dims(LSTM_next,axis=1)
+          LSTM_att = tf.concat([LSTM_att,fLSTM_next],axis=1)[:,1:,:]
+        return ((step+1), projection, final_projection, decoder_state, mel_targets,LSTM_att)
+        
       res_loop = tf.while_loop(att_condition, att_body,
         loop_vars=[step, projection, final_projection, decoder_state, mel_targets,LSTM_att],
         parallel_iterations=hp.parallel_iterations, swap_memory=False)
@@ -78,9 +85,7 @@ def decoder(mel_targets, encoder_output, scope="decoder", training=True, reuse=N
       concat_LSTM_att = res_loop[5]
       step = res_loop[0]
 
-      print("******")
       if hp.print_shapes: print(final_projection)
-      print("******")
 
       with tf.variable_scope("postnet"):
         tensor = final_projection
