@@ -7,14 +7,16 @@ from __future__ import print_function, division
 from hyperparams import Hyperparams as hp
 import tensorflow as tf
 import numpy as np
+from zoneout_LSTM import ZoneoutLSTMCell
+from tensorflow.contrib.rnn import LSTMStateTuple
 
-def embed(inputs, vocab_size, num_units, zero_pad=True, scope="embedding", reuse=None):
+def embed(inputs, vocab_size, num_units, zero_pad=False, scope="embedding", reuse=None):
     
     with tf.variable_scope(scope, reuse=reuse):
         lookup_table = tf.get_variable('lookup_table', 
                                        dtype=tf.float32,
                                        shape=[vocab_size, num_units],
-                                       initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.1))
+                                       initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.5))
         if zero_pad:
             lookup_table = tf.concat((tf.zeros(shape=[1, num_units]), 
                                       lookup_table[1:, :]), 0)
@@ -31,16 +33,20 @@ def glu(inputs):
 def conv1d(inputs, kernel_size, filters, activation, dropout_rate, training=False, scope="conv1d", reuse=None):
   
   with tf.variable_scope(scope, reuse=reuse):
-    inputs = tf.layers.dropout(inputs, rate=dropout_rate, training=training)
-
     conv1d_output = tf.layers.conv1d(
       inputs,
       filters=filters,
-      kernel_size=kernel_size,
-      activation=activation,
+      kernel_size=(kernel_size,),
       padding='same')
 
-    return tf.layers.batch_normalization(conv1d_output, training=training)
+    batched = tf.layers.batch_normalization(conv1d_output, training=training)
+
+    if activation is not None:
+      activated = activation(batched)
+    else:
+      activated = batched
+
+    return tf.layers.dropout(activated, rate=dropout_rate, training=training)
 
 def conv_block(inputs,
                num_units=None,
@@ -124,118 +130,40 @@ def fc_block(inputs,
     return outputs
 
 def fullyconnected(inputs, is_training, layer_size, activation,scope='fc',reuse=None):
-  drop_rate = hp.dropout_rate if is_training else 0.0
   with tf.variable_scope(scope):
     dense = tf.layers.dense(inputs, units=layer_size, activation=activation)
-    output = tf.layers.dropout(dense, rate=drop_rate)
+    output = tf.layers.dropout(dense, rate=hp.dropout_rate, training=is_training)
   return output
 
-def positional_encoding(inputs,
-                        num_units,
-                        position_rate=1.,
-                        zero_pad=True,
-                        scale=True,
-                        scope="positional_encoding",
-                        reuse=None):
 
-    N, T = inputs.get_shape().as_list()
-    with tf.variable_scope(scope, reuse=reuse):
-        position_ind = tf.tile(tf.expand_dims(tf.range(T), 0), [N, 1])
+def bidirectional_LSTM(inputs, scope, training):
 
-        # First part of the PE function: sin and cos argument
-        position_enc = np.array([
-            [pos*position_rate / np.power(10000, 2.*i/num_units) for i in range(num_units)]
-            for pos in range(T)])
+  with tf.variable_scope(scope):
+    outputs, (fw_state, bw_state) = tf.nn.bidirectional_dynamic_rnn(
+      # tf.nn.rnn_cell.LSTMCell(hp.enc_units),
+      # tf.nn.rnn_cell.LSTMCell(hp.enc_units),
+      ZoneoutLSTMCell(hp.enc_units, training, zoneout_factor_cell=hp.z_drop, zoneout_factor_output=hp.z_drop,),
+      ZoneoutLSTMCell(hp.enc_units, training, zoneout_factor_cell=hp.z_drop, zoneout_factor_output=hp.z_drop,),
+      inputs, dtype=tf.float32)
 
-        # Second part, apply the cosine to even columns and sin to odds.
-        position_enc[:, 0::2] = np.sin(position_enc[:, 0::2])  # dim 2i
-        position_enc[:, 1::2] = np.cos(position_enc[:, 1::2])  # dim 2i+1
+    #Concatenate c states and h states from forward
+    #and backward cells
+    encoder_final_state_c = tf.concat( (fw_state.c, bw_state.c), 1)
+    encoder_final_state_h = tf.concat( (fw_state.h, bw_state.h), 1)
 
-        # Convert to a tensor
-        lookup_table = tf.convert_to_tensor(position_enc, tf.float32)
+    #Get the final state to pass as initial state to decoder
+    final_state = LSTMStateTuple( c=encoder_final_state_c, h=encoder_final_state_h)
 
-        if zero_pad:
-            lookup_table = tf.concat((tf.zeros(shape=[1, num_units]),
-                                      lookup_table[1:, :]), 0)
-        outputs = tf.nn.embedding_lookup(lookup_table, position_ind)
+  return tf.concat(outputs, axis=2), final_state # Concat forward + backward outputs and final states
 
-        if scale:
-            outputs *= num_units**0.5
 
-        return outputs
+def unidirectional_LSTM(is_training, layers, size):
+  
+  # rnn_layers = [tf.nn.rnn_cell.LSTMCell(hp.enc_units) for i in range(layers)]
 
-def attention_block(queries,
-                    keys,
-                    dropout_rate=0,
-                    prev_max_attentions=None,
-                    training=False,
-                    mononotic_attention=False,
-                    scope="attention_block",
-                    reuse=None):
+  rnn_layers = [ZoneoutLSTMCell(size, is_training, zoneout_factor_cell=hp.z_drop,
+                           zoneout_factor_output=hp.z_drop,
+                           ext_proj=hp.n_mels) for i in range(layers)]
 
-    _keys = keys
-    with tf.variable_scope(scope, reuse=reuse):
-
-        with tf.variable_scope("query_proj"):
-            queries = fc_block(queries, hp.attention_size, training=training)
-
-        with tf.variable_scope("key_proj"):
-            keys = fc_block(keys, hp.attention_size, training=training)
-
-        # with tf.variable_scope("value_proj"):
-        #     vals = fc_block(vals, hp.attention_size, training=training)
-
-        with tf.variable_scope("alignments"):
-            attention_weights = tf.matmul(queries, keys, transpose_b=True)
-
-            _, Ty, Tx = attention_weights.get_shape().as_list()
-            if mononotic_attention: # for inference
-                key_masks = tf.sequence_mask(prev_max_attentions, Tx)
-                reverse_masks = tf.sequence_mask(Tx - hp.attention_win_size - prev_max_attentions, Tx)[:, ::-1]
-                masks = tf.logical_or(key_masks, reverse_masks)
-                masks = tf.tile(tf.expand_dims(masks, 1), [1, Ty, 1])
-                paddings = tf.ones_like(attention_weights) * (-2 ** 32 + 1)
-                attention_weights = tf.where(tf.equal(masks, False), attention_weights, paddings)
-            alignments = tf.nn.softmax(attention_weights)
-            max_attentions = tf.argmax(alignments, -1)
-
-        with tf.variable_scope("context"):
-            ctx = tf.layers.dropout(alignments, rate=dropout_rate, training=training)
-            #ctx = tf.matmul(ctx, vals)
-            ctx *= Tx * tf.sqrt(1/tf.to_float(Tx))
-
-        # Restore shape for residual connection
-        tensor = fc_block(ctx, hp.embed_size, training=training)
-
-        # returns the alignment of the first one
-        alignments = tf.transpose(alignments[0])[::-1, :]
-
-    return tensor, alignments, max_attentions
-
-def attention_decoder(inputs, memory, num_units=None, scope="attention_decoder", reuse=None):
-    '''Applies a GRU to `inputs`, while attending `memory`.
-    Args:
-      inputs: A 3d tensor with shape of [N, T', C']. Decoder inputs.
-      memory: A 3d tensor with shape of [N, T, C]. Outputs of encoder network.
-      seqlens: A 1d tensor with shape of [N,], dtype of int32.
-      num_units: An int. Attention size.
-      scope: Optional scope for `variable_scope`.  
-      reuse: Boolean, whether to reuse the weights of a previous layer
-        by the same name.
-    
-    Returns:
-      A 3d tensor with shape of [N, T, num_units].    
-    '''
-    with tf.variable_scope(scope, reuse=reuse):
-        if num_units is None:
-            num_units = inputs.get_shape().as_list[-1]
-        
-        attention_mechanism = tf.contrib.seq2seq.BahdanauAttention(num_units, 
-                                                                   memory, 
-                                                                   normalize=True,
-                                                                   probability_fn=tf.nn.softmax)
-        decoder_cell = tf.contrib.rnn.GRUCell(num_units)
-        cell_with_attention = tf.contrib.seq2seq.AttentionWrapper(decoder_cell, attention_mechanism, num_units)
-        outputs, _ = tf.nn.dynamic_rnn(cell_with_attention, inputs, 
-                                       dtype=tf.float32) #( N, T', 16)
-    return outputs
+  stacked_LSTM_Cell = tf.nn.rnn_cell.MultiRNNCell(rnn_layers)
+  return stacked_LSTM_Cell        

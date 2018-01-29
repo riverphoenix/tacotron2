@@ -34,6 +34,8 @@ class Hyperparams:
 
     # Model
     r = 1 # Reduction factor 4
+    outputs_per_step = 1
+    n_feed = 200
     run_cmu = True
     sinusoid = False
     normalization  = True
@@ -53,19 +55,22 @@ class Hyperparams:
 
     ## Decoder
     attention_size = 128
+    att_parameter_init = 0.5
     dec_att_filters = 32
     dec_att_kernel = 31
+    parallel_iterations = 32
 
     dec_layers = 4
     dec_filter_size = 5
     attention_win_size = 3
 
-    dec_prenet_size = 256
+    dec_prenet_size = 128
     dec_LSTM_size = 512
     dec_LSTM_layers = 2
     dec_postnet_layers = 5
     dec_postnet_size = 5
     dec_postnet_filters = 512
+    dec_projection = 512
     
     ## Converter
     converter_layers = 10
@@ -78,11 +83,11 @@ class Hyperparams:
     T_y = int(get_T_y(max_duration, sr, hop_length, r)) # Maximum length of sound (frames)
 
     # run options
-    test_graph = False
-    include_dones = False
-    train_form = 'Encoder' # 'Encoder', 'Converter', 'Both'
-    test_only = 1
-    print_shapes = False
+    test_graph = True
+    include_dones = True
+    train_form = 'Both' # 'Encoder', 'Converter', 'Both'
+    test_only = 0
+    print_shapes = True
 
     # training scheme
     optim = 'adam'
@@ -99,10 +104,10 @@ class Hyperparams:
     # Prepo params
     data = 'datasets/defaultS'
     prepro_gpu = 16
+    
     # Training and Testing
-
     summary_interval = 1
     test_interval = 3
     checkpoint_interval = 1
 
-    # Make generate be more general and run N samples (up to hp.batch) instead of only 1
+    # Remove rnn_wrappers

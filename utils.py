@@ -145,13 +145,13 @@ def plot_wavs(config,wavs,gs):
             librosa.display.specshow(wav[3][0,:,:].T,y_axis='linear')
             plt.title('Mel spectogram')
             plt.colorbar()
-            plt.tight_layout()
+            #plt.tight_layout()
 
             plt.subplot(len(wavs)*3, 1, (i*3)+3)
             librosa.display.specshow(wav[4][:,:].T,y_axis='linear')
             plt.title('Mag spectogram')
             plt.colorbar()
-            plt.tight_layout()
+            #plt.tight_layout()
 
         plt.savefig('{}/wavs_{}.png'.format(config.log_dir, gs), format='png')
 

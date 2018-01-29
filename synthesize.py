@@ -20,23 +20,17 @@ from tqdm import tqdm
 def create_write_files(ret,sess,g,x,mname,cdir,typeS):
 
     x = np.expand_dims(x, axis=0)
-    mel_output = np.zeros((1, hp.T_y // hp.r, hp.n_mels * hp.r), np.float32)
-    decoder_output = np.zeros((1, hp.T_y // hp.r, hp.embed_size), np.float32)
-    prev_max_attentions_li = np.zeros((hp.dec_layers, 1), np.int32)
-    #for j in range(hp.T_y // hp.r):
-    for j in tqdm(range(hp.T_y // hp.r)):
-        _gs, _mel_output, _max_attentions_li = \
-            sess.run([g.global_step, g.mel_output, g.max_attentions_li],
-                     {g.x: x,
-                      g.y1: mel_output,
-                      g.prev_max_attentions_li:prev_max_attentions_li})
-        mel_output[:, j, :] = _mel_output[:, j, :]
-        #prev_max_attentions_li = np.array(_max_attentions_li)[:, :, j]
+    x = np.append(x,np.zeros((hp.batch_size-1, hp.T_x)),axis=0)
+    mel_output = np.zeros((hp.batch_size, hp.T_y // hp.r, hp.n_mels * hp.r), np.float32)
+    _gs, mel_output = \
+        sess.run([g.global_step, g.mel_output],
+                 {g.x: x,
+                  g.y1: mel_output})
        
-    #mag_output = sess.run([g.mag_output], {g.mel_output: mel_output})
     mag_output = sess.run(g.mag_output, {g.converter_input: mel_output})
     
-    x = np.squeeze(x, axis=0)
+    # x = np.squeeze(x[0], axis=0)
+    x = x[0]
     txt = invert_text(x)
     mag_output = np.squeeze(mag_output[0])
 
@@ -53,17 +47,12 @@ def create_write_files(ret,sess,g,x,mname,cdir,typeS):
 def create_mel(sess,g,x):
 
     x = np.expand_dims(x, axis=0)
-    print(x)
-    mel_output = np.zeros((1, hp.T_y // hp.r, hp.n_mels * hp.r), np.float32)
-    decoder_output = np.zeros((1, hp.T_y // hp.r, hp.embed_size), np.float32)
-    prev_max_attentions_li = np.zeros((hp.dec_layers, 1), np.int32)
-    for j in tqdm(range(hp.T_y // hp.r)):
-        _gs, _mel_output, _max_attentions_li = \
-            sess.run([g.global_step, g.mel_output, g.max_attentions_li],
-                     {g.x: x,
-                      g.y1: mel_output,
-                      g.prev_max_attentions_li:prev_max_attentions_li})
-        mel_output[:, j, :] = _mel_output[:, j, :]
+    x = np.append(x,np.zeros((hp.batch_size-1, hp.T_x)),axis=0)
+    mel_output = np.zeros((hp.batch_size, hp.T_y // hp.r, hp.n_mels * hp.r), np.float32)
+    _gs, mel_output = \
+        sess.run([g.global_step, g.mel_output],
+                 {g.x: x,
+                  g.y1: mel_output})
        
     return mel_output
 
@@ -117,7 +106,7 @@ def synthesize_part(grp,config,gs,x_train,g_conv):
                 sv.saver.restore(sess, tf.train.latest_checkpoint(config.log_dir))
 
                 mel_out1 = create_mel(sess,grp,x_train)
-                #mel_out2 = create_mel(sess,grp,x_test)
+                mel_out2 = create_mel(sess,grp,x_test)
 
                 sess.close()
         with g_conv.graph.as_default():
@@ -128,7 +117,7 @@ def synthesize_part(grp,config,gs,x_train,g_conv):
                 sv_conv.saver.restore(sess_conv, tf.train.latest_checkpoint(config.load_converter))
 
                 wavs = create_write_files_conv(wavs,sess_conv,mel_out1,g_conv,x_train,"sample_"+str(gs)+"_train_",config.log_dir,"train")
-                #wavs = create_write_files_conv(wavs,sess_conv,mel_out2,g_conv,x_test,"sample_"+str(gs)+"_test_",config.log_dir,"test")
+                wavs = create_write_files_conv(wavs,sess_conv,mel_out2,g_conv,x_test,"sample_"+str(gs)+"_test_",config.log_dir,"test")
 
                 sess_conv.close()
 

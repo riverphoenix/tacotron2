@@ -7,6 +7,9 @@ from __future__ import print_function
 from hyperparams import Hyperparams as hp
 from modules import *
 import tensorflow as tf
+from rnn_wrappers import TacotronDecoderWrapper
+from attention_wrapper import AttentionWrapper, LocationBasedAttention, BahdanauAttention
+
 
 def encoder(inputs, training=True, scope="encoder", reuse=None):
     if hp.print_shapes: print(inputs)
@@ -24,139 +27,63 @@ def encoder(inputs, training=True, scope="encoder", reuse=None):
                                 dropout_rate=hp.dropout_rate,
                                 scope="encoder_conv_{}".format(i)) # (N, Tx, c)
         if hp.print_shapes: print(tensor)
-        with tf.variable_scope("encoder_biLSTM"):
-          cell = tf.nn.rnn_cell.LSTMCell(num_units=hp.enc_units)
-          cell = tf.contrib.rnn.DropoutWrapper(cell, state_keep_prob=1.0-hp.z_drop)
-          outputs, _  = tf.nn.bidirectional_dynamic_rnn(
-            cell_fw=cell,cell_bw=cell,dtype=tf.float32,inputs=tensor)
-          output, _ = outputs
-          #output = tf.concat(outputs, 2)
+
+        output, _ = bidirectional_LSTM(tensor, 'encoder_biLSTM', training=training)
         if hp.print_shapes: print(output)
 
     return output
 
-def decoder(decoder_input, encoder_output, prev_max_attentions_li=None, scope="decoder", training=True, reuse=None):
+def decoder(mel_targets, encoder_output, scope="decoder", training=True, reuse=None):
 
     with tf.variable_scope(scope, reuse=reuse):
       
-      # with tf.variable_scope("attention"):
-      #   attn_cell = attention(encoder_output, hp.attention_size)
-      #   #attn_cell = encoder_output
+      decoder_cell = TacotronDecoderWrapper(unidirectional_LSTM(training, layers=hp.dec_LSTM_layers, size=hp.dec_LSTM_size), training)
 
-      with tf.variable_scope("prenet"):
-        prenet = fullyconnected(decoder_input, is_training=training, layer_size=hp.dec_prenet_size, activation=tf.nn.relu,scope='fc1')
-        prenet = fullyconnected(prenet, is_training=training, layer_size=hp.dec_prenet_size, activation=tf.nn.relu,scope='fc2')
+      attention_decoder = AttentionWrapper(
+        decoder_cell,
+        LocationBasedAttention(hp.attention_size, encoder_output),
+        #BahdanauAttention(hp.attention_size, encoder_output),
+        alignment_history=True,
+        output_attention=False)
 
-      if hp.print_shapes: print(prenet)
+      decoder_state = attention_decoder.zero_state(batch_size=hp.batch_size, dtype=tf.float32)
+      projection = tf.tile([[0.0]], [hp.batch_size, hp.n_mels])
+      final_projection =tf.zeros([hp.batch_size, hp.T_y//hp.r, hp.n_mels], tf.float32)
+      LSTM_att =tf.zeros([hp.batch_size, hp.T_y//hp.r, hp.dec_LSTM_size*2], tf.float32)   
+      step = 0
 
-      with tf.variable_scope("decoder_conv_att"):
-          # with tf.variable_scope("positional_encoding"):
-          #     decoder_input_pe = embed(tf.tile(tf.expand_dims(tf.range(hp.T_y // hp.r), 0), [bc_batch, 1]),
-          #              vocab_size=hp.T_y,
-          #              num_units=hp.embed_size,
-          #              zero_pad=False,
-          #              scope="decoder_input_pe")
+      def att_condition(step, projection, final_projection, decoder_state, mel_targets,LTSM_att):
+        return step <  hp.T_y//hp.r
 
-          #     encoder_output_pe = embed(tf.tile(tf.expand_dims(tf.range(hp.T_x), 0), [bc_batch, 1]),
-          #                   vocab_size=hp.T_x,
-          #                   num_units=hp.embed_size,
-          #                   zero_pad=False,
-          #                   scope="encoder_output_pe")
+      def att_body(step, projection, final_projection, decoder_state, mel_targets,LTSM_att):
+        if training:
+          if step == 0:
+            projection, decoder_state, _, LTSM_next = attention_decoder.call(tf.tile([[0.0]], [hp.batch_size, hp.n_mels]), decoder_state)
+          else:
+            projection, decoder_state, _, LTSM_next = attention_decoder.call(mel_targets[:, step-1, :], decoder_state)
+        else:
+          projection, decoder_state, _, LTSM_next = attention_decoder.call(projection, decoder_state)
+        final_projection = tf.concat([final_projection,tf.expand_dims(projection,1)],axis=1)[:,1:,:]
+        final_projection.set_shape([hp.batch_size, hp.T_y//hp.r, hp.n_mels])
+        LTSM_att = tf.concat([LTSM_att,tf.expand_dims(LTSM_next,1)],axis=1)[:,1:,:]
+        LTSM_att.set_shape([hp.batch_size, hp.T_y//hp.r, hp.dec_LSTM_size*2])
+        return ((step+1), projection, final_projection, decoder_state, mel_targets,LTSM_att)
 
-          # with tf.variable_scope("conv_att"):
-          #   for i in range(hp.dec_layers):
-          #       decoder_input = fc_block(decoder_input,
-          #                   num_units=hp.embed_size,
-          #                   dropout_rate=0 if i==0 else hp.dropout_rate,
-          #                   activation_fn=tf.nn.relu,
-          #                   training=training,
-          #                   scope="decoder_conv_att_{}".format(i)) # (N, Ty/r, a)
+      res_loop = tf.while_loop(att_condition, att_body,
+        loop_vars=[step, projection, final_projection, decoder_state, mel_targets,LSTM_att],
+        parallel_iterations=hp.parallel_iterations, swap_memory=False)
 
-          # # with tf.variable_scope("conv_att"):
-          # #   _decoder_input = conv1d(decoder_input,
-          # #                     filters=hp.dec_att_filters,
-          # #                     kernel_size=hp.dec_att_kernel,
-          # #                     activation=tf.nn.relu,
-          # #                     training=training,
-          # #                     dropout_rate=hp.dropout_rate,
-          # #                     scope="decoder_att_conv") # (N, Tx, c)
+      final_projection = res_loop[2]
+      final_decoder_state = res_loop[3]
+      concat_LSTM_att = res_loop[5]
+      step = res_loop[0]
 
-          # #   decoder_input = (_decoder_input + decoder_input) * tf.sqrt(0.5)
-
-          # inputs = decoder_input
-          # max_attentions_li = []
-          # with tf.variable_scope("att_block"):
-          #   for i in range(hp.dec_layers):
-          #       queries = conv_block(inputs,
-          #                            size=hp.dec_filter_size,
-          #                            rate=2**i,
-          #                            padding="CAUSAL",
-          #                            training=training,
-          #                            scope="decoder_conv_block_att_{}".format(i)) # (N, Ty/r, a)
-
-          #       inputs = (queries + inputs) * tf.sqrt(0.5)
-
-          #       # residual connection
-          #       queries = inputs + decoder_input_pe
-          #       print(queries)
-          #       encoder_output += encoder_output_pe
-          #       print(encoder_output)
-
-          #       # Attention Block.
-          #       # tensor: (N, Ty/r, e)
-          #       # alignments: (N, Ty/r, Tx)
-          #       # max_attentions: (N, Ty/r)
-          #       tensor, _, max_attentions = attention_block(queries,
-          #                        encoder_output,
-          #                        dropout_rate=hp.dropout_rate,
-          #                        prev_max_attentions=prev_max_attentions_li[i],
-          #                        mononotic_attention=(not training and i>2),
-          #                        training=training,
-          #                        scope="attention_block_{}".format(i))
-
-          #       inputs = (tensor + queries) * tf.sqrt(0.5)
-          #       max_attentions_li.append(max_attentions)
-          #       print(inputs)
-        attn_cell = attention_decoder(prenet, encoder_output, num_units=hp.attention_size) # (N, T', E)
-
-          # # residual connection
-          # decoder_input += decoder_input_pe
-          # print(decoder_input)
-          # encoder_output += encoder_output_pe
-          # print(encoder_output)
-
-          # with tf.variable_scope("att_block"):
-          #   tensor, _, _ = attention_block(decoder_input,
-          #                    encoder_output,
-          #                    dropout_rate=hp.dropout_rate,
-          #                    prev_max_attentions=prev_max_attentions_li[i],
-          #                    mononotic_attention=(not training and i>2),
-          #                    training=training,
-          #                    scope="attention_block_{}".format(i))
-
-          #   attn_cell = (tensor + decoder_input) * tf.sqrt(0.5)
-      #attn_cell = inputs
-      if hp.print_shapes: print(attn_cell)
-
-      pre_att = tf.concat([prenet,attn_cell], axis=-1)
-      if hp.print_shapes: print(pre_att)
-
-      with tf.variable_scope("decoderLSTM"):
-        cell = [tf.nn.rnn_cell.LSTMCell(size) for size in [hp.dec_LSTM_size,hp.dec_LSTM_size*2]]
-        cell = tf.nn.rnn_cell.MultiRNNCell(cell)
-        outputsLSTM, _ = tf.nn.dynamic_rnn(cell=cell,dtype=tf.float32, inputs=pre_att)
-
-      if hp.print_shapes: print(outputsLSTM)
-
-      LSTM_att = tf.concat([outputsLSTM,attn_cell], axis=-1)
-      if hp.print_shapes: print(LSTM_att)
-
-      with tf.variable_scope("projection"):
-        projection = tf.layers.dense(LSTM_att,hp.n_mels)
-        if hp.print_shapes: print(projection)
+      print("******")
+      if hp.print_shapes: print(final_projection)
+      print("******")
 
       with tf.variable_scope("postnet"):
-        tensor = projection
+        tensor = final_projection
         for i in range(hp.dec_postnet_layers):
           tensor = conv1d(tensor,
             filters=hp.dec_postnet_filters,
@@ -165,22 +92,23 @@ def decoder(decoder_input, encoder_output, prev_max_attentions_li=None, scope="d
             training=training,
             dropout_rate=hp.dropout_rate,
             scope="decoder_conv_{}".format(i)) # (N, Tx, c)
-        tensor = tf.layers.dense(tensor,hp.n_mels)
+        #tensor = tf.layers.dense(tensor,hp.n_mels)
+        tensor = tf.contrib.layers.fully_connected(tensor, hp.n_mels, activation_fn=None, biases_initializer=tf.zeros_initializer())
       if hp.print_shapes: print(tensor)
 
-      mel_logits = projection + tensor
+      mel_logits = final_projection + tensor
       if hp.print_shapes: print(mel_logits)
 
       if hp.include_dones:
         with tf.variable_scope("done_output"):
-            done_output = fc_block(LSTM_att, 2, training=training)
+            done_output = fc_block(concat_LSTM_att, 2, training=training)
             done_output = tf.nn.sigmoid(done_output)
         if hp.print_shapes: print(done_output)
       else:
         done_output = None
+        concat_LSTM_att = None
 
-    #return mel_logits, done_output, max_attentions_li
-    return mel_logits, done_output, prev_max_attentions_li
+    return mel_logits, final_projection, done_output, final_decoder_state, concat_LSTM_att,step
 
 def converter(inputs, training=True, scope="converter", reuse=None):
 

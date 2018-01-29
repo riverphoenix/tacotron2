@@ -19,6 +19,7 @@ import synthesize
 from utils import *
 from tensorflow.python import debug as tf_debug
 from google.protobuf import text_format
+from attention_wrapper import AttentionWrapper
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -31,36 +32,29 @@ class Graph:
         with self.graph.as_default():
             if training:
                 self.origx, self.x, self.y1, self.y2, self.y3, self.num_batch = get_batch(config,train_form)
-                self.prev_max_attentions_li = tf.ones(shape=(hp.dec_layers, self.num_batch), dtype=tf.int32)
 
             else: # Evaluation
-                self.x = tf.placeholder(tf.int32, shape=(1, hp.T_x))
-                self.y1 = tf.placeholder(tf.float32, shape=(1, hp.T_y//hp.r, hp.n_mels*hp.r))
-                self.prev_max_attentions_li = tf.placeholder(tf.int32, shape=(hp.dec_layers, 1,))
+                self.x = tf.placeholder(tf.int32, shape=(hp.batch_size, hp.T_x))
+                self.y1 = tf.placeholder(tf.float32, shape=(hp.batch_size, hp.T_y//hp.r, hp.n_mels*hp.r))
 
-			# Get decoder inputs: feed last frames only
-            if train_form != 'Converter':
-                self.decoder_input = tf.concat((tf.zeros_like(self.y1[:, :1, -hp.n_mels:]), self.y1[:, :-1, -hp.n_mels:]), 1)
-            
             # Networks
             if train_form != 'Converter':
                 with tf.variable_scope("encoder"):
                     self.encoded = encoder(self.x, training=training)
                     
                 with tf.variable_scope("decoder"):
-                    self.mel_logits, self.done_output, self.max_attentions_li = decoder(self.decoder_input, self.encoded, self.prev_max_attentions_li, training=training)
-                    #self.mel_output = self.mel_logits
-                    self.mel_output = tf.nn.sigmoid(self.mel_logits)
+                    self.mel_output, self.bef_mel_output, self.done_output, self.decoder_state, self.LTSM, self.step = decoder(self.y1, self.encoded, training=training)
+                    self.cell_state = self.decoder_state.cell_state
+                    self.mel_output = tf.nn.sigmoid(self.mel_output)
+                    # self.bef_mel_output = tf.nn.sigmoid(self.bef_mel_output)
                 
             if train_form == 'Both':
                 with tf.variable_scope("converter"):
-                    #self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
                     self.converter_input = self.mel_output
                     self.mag_logits = converter(self.converter_input, training=training)
                     self.mag_output = tf.nn.sigmoid(self.mag_logits)
             elif train_form == 'Converter':
                 with tf.variable_scope("converter"):
-                    #self.converter_input = tf.reshape(self.mel_output, (-1, hp.T_y, hp.n_mels))
                     self.converter_input = self.y1
                     self.mag_logits = converter(self.converter_input, training=training)
                     self.mag_output = tf.nn.sigmoid(self.mag_logits)
@@ -72,6 +66,7 @@ class Graph:
                 # Loss
                 if train_form != 'Converter':
                     self.loss1 = tf.reduce_mean(tf.abs(self.mel_output - self.y1))
+                    self.loss1b = tf.reduce_mean(tf.abs(self.bef_mel_output - self.y1))
                     if hp.include_dones:
                         self.loss2 = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.done_output, labels=self.y2))
                 if train_form != 'Encoder':
@@ -79,14 +74,14 @@ class Graph:
 
                 if train_form == 'Both':
                     if hp.include_dones:
-                        self.loss = self.loss1 + self.loss2 + self.loss3
+                        self.loss = self.loss1 + self.loss1b + self.loss2 + self.loss3
                     else:
-                        self.loss = self.loss1 + self.loss3
+                        self.loss = self.loss1 + self.loss1b + self.loss3
                 elif train_form == 'Encoder':
                     if hp.include_dones:
-                        self.loss = self.loss1 + self.loss2
+                        self.loss = self.loss1 + self.loss1b + self.loss2
                     else:
-                        self.loss = self.loss1
+                        self.loss = self.loss1 + self.loss1b
                 else:
                     self.loss = self.loss3
                 
@@ -185,27 +180,62 @@ def main():
                 
                 for epoch in range(1, 100000000):
                     if sv.should_stop(): break
-                    losses = [0,0,0,0]
+                    losses = [0,0,0,0,0]
                     #for step in tqdm(range(1)):
                     for step in tqdm(range(g.num_batch)):
-                    #for step in range(g.num_batch):
+                    # for step in range(g.num_batch):
                         if hp.train_form == 'Both':
                             if hp.include_dones:
-                                gs,merged,loss,loss1,loss2,loss3,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss2,g.loss3, g.train_op])
-                                loss_one = [loss,loss1,loss2,loss3]
+                                gs,merged,loss,loss1,loss1b, loss2,loss3,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss1b,g.loss2,g.loss3, g.train_op])
+                                loss_one = [loss,loss1,loss1b, loss2,loss3]
                             else:
-                                gs,merged,loss,loss1,loss3,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss3, g.train_op])
-                                loss_one = [loss,loss1,loss3,0]
+                                gs,merged,loss,loss1,loss1b, loss3,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss1b,g.loss3, g.train_op])
+                                loss_one = [loss,loss1,loss1b, loss3,0]
                         elif hp.train_form == 'Encoder':
                             if hp.include_dones:
-                                gs,merged,loss,loss1,loss2,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss2,g.train_op])
-                                loss_one = [loss,loss1,loss2,0]
+                                gs,merged,loss,loss1,loss1b, loss2,_ = sess.run([g.global_step,g.merged,g.loss,g.loss1,g.loss1b,g.loss2,g.train_op])
+                                loss_one = [loss,loss1,loss1b, loss2,0]
+                                # x1, encoded,LTSM,done,bef = sess.run([g.x, g.encoded,g.LTSM,g.done_output,g.bef_mel_output])
+                                # print("@@@@@@@@@@@@@@@@@@")
+                                # print(x1.shape)
+                                # print(x1[0,:])
+                                # print("---------------------")
+                                # print(encoded.shape)
+                                # print(encoded[0,:5,:5])
+                                # print("---------------------")
+                                # print(LTSM.shape)
+                                # print(LTSM[0,:5,:5])
+                                # print("---------------------")
+                                # print(done.shape)
+                                # print(done[0,::100,:])
+                                # print("---------------------")
+                                # print(bef.shape)
+                                # print(bef[0,::160,::10])
+                                # print("@@@@@@@@@@@@@@@@@@")
                             else:
-                                gs,merged,loss,_ = sess.run([g.global_step,g.merged,g.loss, g.train_op])
-                                loss_one = [loss,0,0,0]
+                                gs,merged,loss, loss1, loss1b, _ = sess.run([g.global_step,g.merged,g.loss, g.loss1, g.loss1b, g.train_op])
+                                loss_one = [loss,loss1,loss1b,0,0]
+                                # x1, encoded,mel, bef,state = sess.run([g.x, g.encoded,g.mel_output,g.bef_mel_output,g.cell_state])
+                                # print("@@@@@@@@@@@@@@@@@@")
+                                # print(x1.shape)
+                                # print(x1[0,:])
+                                # print("---------------------")
+                                # print(encoded.shape)
+                                # print(encoded[0,:5,:5])
+                                # print("---------------------")
+                                # print(mel.shape)
+                                # print(mel[0,::160,::10])
+                                # print("---------------------")
+                                # print(bef.shape)
+                                # print(bef[0,::160,::10])
+                                # print("---------------------")
+                                # print(state)
+                                # print("@@@@@@@@@@@@@@@@@@")
                         else:
                             gs,merged,loss,_ = sess.run([g.global_step,g.merged,g.loss, g.train_op])
-                            loss_one = [loss,0,0,0]
+                            loss_one = [loss,0,0,0,0]
+
+                        # print("Step "+str(gs)+": "+str(loss_one))
 
                         losses = [x + y for x, y in zip(losses, loss_one)]
 
@@ -213,14 +243,14 @@ def main():
                     print("###############################################################################")
                     if hp.train_form == 'Both':
                         if hp.include_dones:
-                            infolog.log("Global Step %d (%04d): Loss = %.8f Loss1 = %.8f Loss2 = %.8f Loss3 = %.8f" %(epoch,gs,losses[0],losses[1],losses[2],losses[3]))
+                            infolog.log("Global Step %d (%04d): Loss = %.8f Loss1 = %.8f Loss1b = %.8f Loss2 = %.8f Loss3 = %.8f" %(epoch,gs,losses[0],losses[1],losses[2],losses[3],losses[4]))
                         else:
-                            infolog.log("Global Step %d (%04d): Loss = %.8f Loss1 = %.8f Loss3 = %.8f" %(epoch,gs,losses[0],losses[1],losses[2]))
+                            infolog.log("Global Step %d (%04d): Loss = %.8f Loss1 = %.8f Loss1b = %.8f Loss3 = %.8f" %(epoch,gs,losses[0],losses[1],losses[2],losses[3]))
                     elif hp.train_form == 'Encoder':
                         if hp.include_dones:
-                            infolog.log("Global Step %d (%04d): Loss = %.8f Loss1 = %.8f Loss2 = %.8f" %(epoch,gs,losses[0],losses[1],losses[2]))
+                            infolog.log("Global Step %d (%04d): Loss = %.8f Loss1 = %.8f Loss1b = %.8f Loss2 = %.8f" %(epoch,gs,losses[0],losses[1],losses[2],losses[3]))
                         else:
-                            infolog.log("Global Step %d (%04d): Loss = %.8f" %(epoch,gs,losses[0]))
+                            infolog.log("Global Step %d (%04d): Loss = %.8f Loss1 = %.8f Loss1b = %.8f" %(epoch,gs,losses[0],losses[1],losses[2]))
                     else:
                         infolog.log("Global Step %d (%04d): Loss = %.8f" %(epoch,gs,losses[0]))
                     print("###############################################################################")
@@ -270,11 +300,11 @@ def main():
             svT = tf.train.Supervisor(logdir=config.log_dir)
             with svT.managed_session() as sessT:
                 origx = sessT.run([gT.origx])
-            if not config.load_converter:
-                wavs = synthesize.synthesize_part(g2,config,0,origx,None)
-            else:
-                wavs = synthesize.synthesize_part(g2,config,0,origx,g_conv)
-            plot_wavs(config,wavs,0)
+        if not config.load_converter:
+            wavs = synthesize.synthesize_part(g2,config,0,origx,None)
+        else:
+            wavs = synthesize.synthesize_part(g2,config,0,origx,g_conv)
+        plot_wavs(config,wavs,0)
 
     print("Done")
 
