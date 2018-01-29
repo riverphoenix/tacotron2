@@ -25,12 +25,9 @@ First run 'python prepro.py' to generate the training data
 - cmudict.dict.txt if you use hyperparam cmu=True
 
 Then run 'python train.py' for the actual training/generation/loading of model/samples. Typical usages:
-``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --deltree=True ```
-- logs defines log output directory, log_name defines name of current run, data_paths the directory of the training data, deltree to delete folder
-``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --load_path=logs/test ```
-- load_path the folder to load previous trained model
-``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --load_path=logs/test --load_converter=logs/converter ```
-- load_converter the folder to load pretrained converter
+- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --deltree=True ```, logs defines log output directory, log_name defines name of current run, data_paths the directory of the training data, deltree to delete folder
+- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --load_path=logs/test ```, load_path the folder to load previous trained model
+- ``` python train.py --log_dir=logs --log_name=test --data_paths=datasets/defaultS --load_path=logs/test --load_converter=logs/converter ```, load_converter the folder to load pretrained converter
 
 Hyperparameters for training and testing:
 - summary_interval = 1 # every X epochs generate summary
