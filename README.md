@@ -1,14 +1,14 @@
 # Tacotron 2
 
-## Implementation of Tacotron 2
+Implementation of Tacotron 2
 
-## Initial attempt
+### Initial attempt
 
 This is a tensorflow implementation of [NATURAL TTS SYNTHESIS BY CONDITIONING WAVENET ON MEL SPECTROGRAM PREDICTIONS](https://arxiv.org/pdf/1712.05884.pdf).
 
 Initially I will use existing components from tacotron and other opensource implementations
 
-## Usage
+### Usage
 
 Main configuration is first to decide the 'run options' inside hyperparams.py
 - test_graph = True # If you want to generate samples then set this to True
